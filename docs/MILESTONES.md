@@ -1,0 +1,66 @@
+# Milestones & executable acceptance tests
+
+A milestone is **done** only when every test listed for it is automated, committed, and passing in CI (`npm test` / `npm run test:e2e` / `npm run loadtest`). Manual checks are additionally listed where hardware is involved.
+
+## M1 — Foundation
+Scope: monorepo, Drizzle schema + migrations, registration (create squad / join by 6-char code), names + role selection, 4-player lobby, QR join, host dashboard (pre-START), server-authoritative event clock, signed sessions.
+
+Acceptance tests:
+- [ ] `db`: migrations apply cleanly to an empty Postgres (PGlite in CI, Neon in staging).
+- [ ] `api`: creating a squad returns a 6-char code from the safe alphabet; creator is Captain (slot 4).
+- [ ] `api`: 3 more players join; a 5th join is rejected; duplicate role rejected; unknown code rejected.
+- [ ] `api`: role swap allowed before START only with Captain authorisation; rejected after START.
+- [ ] `api`: 30 squads × 4 players = 120 registrations succeed; 31st squad rejected (capacity).
+- [ ] `auth`: rejoin token restores the same slot on a new connection; tampered token rejected; host endpoints reject missing/invalid host key.
+- [ ] `clock`: START transitions REGISTRATION_LOCKED → COUNTDOWN → LIVE; pause/resume preserves elapsed time exactly (fake timers); phase at given elapsed ms matches the timeline table.
+- [ ] `ws`: a lobby client receives roster updates when a teammate joins (real WS in test).
+- [ ] `rate-limit`: >N join attempts per minute per IP returns 429.
+- [ ] `web` (Playwright): scan URL → create squad → 3 browser contexts join → all four see the full lobby; host page shows the squad and enables START when ready.
+
+## M2 — Shared 3D world (single car)
+- [ ] Shared deterministic vehicle model: unit tests for accel/brake/steer, grip change in rain, fuel burn, health damage.
+- [ ] Server runs fixed 20 Hz tick; tick p99 < 2 ms with 1 car + 100 traffic agents (benchmark test).
+- [ ] Client renders test road network, chase camera, touch controls (Playwright smoke: canvas renders, FPS counter > 0, input moves car on server).
+- [ ] Traffic agents follow lanes, stop at red signals (sim unit test).
+- [ ] Manual: 30 FPS on reference mid-range Android phone, Medium preset.
+
+## M3 — Actual multiplayer (same world, 5 → 10 → 20 → 30)
+- [ ] For each N in {5,10,20,30}: N headless racer bots in **one** `WorldRoom`; assert all share one room id, one tick counter, and that each bot's snapshot contains every other bot within Near range at server-truth positions (±0.5 m).
+- [ ] Two bots driving onto the same edge see each other; overtake changes order consistently on both clients.
+- [ ] Collision: two cars collide → both receive identical server-resolved impulses; damage capped; anti-ramming ghost-out triggers on repeated hits.
+- [ ] Prediction/reconciliation: with 150 ms simulated latency and 2% loss, own-car correction error < 1 m p95.
+- [ ] Interest tiers: far cars arrive at ≤ 1 Hz, near at 20 Hz; no squad ever missing from the global map channel.
+- [ ] Static check: codebase contains no code path creating a second `WorldRoom` per event (test asserts singleton).
+
+## M4 — Four-player squad mechanics
+- [ ] Engineer challenge: correct answer → scoring event + vehicle buff applied to the real squad car on server.
+- [ ] Deceiver bluffing: one entry per team, cannot vote own team, one vote per player, points deterministic.
+- [ ] Captain: navigation choice, power-up deploy, combined four-key submission.
+- [ ] Private clues: a player's WS stream never contains another role's clue (assert over full message log).
+- [ ] Playwright: four browser contexts, each role UI active simultaneously during one challenge.
+
+## M5 — Chennai geography
+- [ ] mapbuild produces a connected graph: every enabled start location has a path to Hexaware (graph test).
+- [ ] All start locations verified (coordinates stored with `verified_at`); disabled ones not selectable.
+- [ ] Route calibration: reference-car simulated time for every route within ±10% after normalisation.
+- [ ] OSM attribution visible in-game and in credits.
+
+## M6 — Fuel & suspense
+- [ ] Pit-stop 6-step flow end-to-end with four roles; FIFO queue; max dwell enforced; station never blocked.
+- [ ] Fuel exhaustion → roadside recovery, no elimination.
+- [ ] Director: running a full 60-min timeline in fast-forward fires every beat exactly once, in order; same seed → identical beat log; road closure always leaves a valid route for every squad.
+- [ ] Weather change visible to all clients within one global update.
+
+## M7 — Final experience
+- [ ] Gate assessment open to all squads 50:00–55:00; escort transition awards 0 driving points for skipped checkpoints.
+- [ ] Convoy: all 30 real cars placed in convoy slots in the same world; all clients receive the same convoy timeline (timestamps equal).
+- [ ] Offer letters: one PDF per player, contains required fields and the exact disclaimer string.
+- [ ] Championship: totals derived from `scoring_events`; tie-break test cases.
+
+## M8 — Production testing
+- [ ] Load test: 120 connected clients (30 racers + 90 role clients) + host + projector, 60-min fast-forward and a 15-min real-time run: server tick p99 < 10 ms, per-client downstream < 40 KB/s avg, zero disconnects without recovery.
+- [ ] Reconnection storm: drop 40 clients at once, all rejoin to the same slots within 10 s.
+- [ ] Server restart mid-event: recovers from snapshot, state diff vs. pre-crash within one snapshot interval.
+- [ ] Fairness simulation: 1000 seeded runs × all routes × all cars; max-score reachable for every combination; mean driving score spread across routes < 5%.
+- [ ] Security: replayed input seq rejected, forged session rejected, rate limits hold, no clue leakage, host routes protected.
+- [ ] Full 60-minute rehearsal with real phones on venue Wi-Fi (manual, logged in PROGRESS.md).

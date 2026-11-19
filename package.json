@@ -1,0 +1,12 @@
+{
+  "name": "code-redline",
+  "private": true,
+  "version": "0.0.0",
+  "description": "CODE REDLINE: ROAD TO HEXAWARE — single-world multiplayer racing event",
+  "workspaces": ["apps/*", "packages/*", "tools/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "echo \"M1: wire up web + server dev scripts\"",
+    "test": "echo \"M1: add vitest\""
+  }
+}
