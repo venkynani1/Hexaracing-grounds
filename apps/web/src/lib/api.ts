@@ -35,13 +35,33 @@ export const api = {
     }),
   assignRoles: (token: string, assignments: { playerId: string; role: Role }[]) =>
     req<{ roster: Roster }>('POST', '/api/team/roles', { assignments }, { authorization: `Bearer ${token}` }),
+  squad: {
+    coding: (token: string, qid: string, answer: string) => squadPost(token, `/api/squad/coding/${qid}`, { answer, idempotencyKey: idem() }),
+    fourKey: (token: string, id: string, answer: string) => squadPost(token, `/api/squad/fourkey/${id}`, { answer, idempotencyKey: idem() }),
+    navigation: (token: string, id: string, answer: string) => squadPost(token, `/api/squad/navigation/${id}`, { answer, idempotencyKey: idem() }),
+    waypoint: (token: string, waypoint: string | null) => req<{ waypoint: string | null }>('POST', '/api/squad/waypoint', { waypoint }, bearer(token)),
+    powerUp: (token: string, kind: string) => req<{ inventory: Record<string, number> }>('POST', '/api/squad/powerup', { kind }, bearer(token)),
+    bluffEntry: (token: string, id: string, text: string) => req<{ ok: true }>('POST', `/api/squad/bluff/${id}/entry`, { text }, bearer(token)),
+    bluffVote: (token: string, id: string, choiceId: string) => req<{ ok: true }>('POST', `/api/squad/bluff/${id}/vote`, { choiceId }, bearer(token)),
+  },
   host: {
+    warp: (key: string, toElapsedMs: number) => req<{ clock: ClockState }>('POST', '/api/host/warp', { toElapsedMs }, { 'x-host-key': key }),
     overview: (key: string) => req<HostOverview>('GET', '/api/host/overview', undefined, { 'x-host-key': key }),
     start: (key: string, force = false) => req<{ clock: ClockState }>('POST', '/api/host/start', { force }, { 'x-host-key': key }),
     pause: (key: string) => req<{ clock: ClockState }>('POST', '/api/host/pause', {}, { 'x-host-key': key }),
     resume: (key: string) => req<{ clock: ClockState }>('POST', '/api/host/resume', {}, { 'x-host-key': key }),
   },
 };
+
+export interface SubmitResult {
+  correct: boolean;
+  points: number;
+  attemptsLeft: number;
+}
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+/** Fresh idempotency key per user action: a network retry of the same action is never double-scored. */
+const idem = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const squadPost = (token: string, path: string, body: unknown) => req<SubmitResult>('POST', path, body, bearer(token));
 
 export function wsUrl(): string {
   const explicit = import.meta.env.VITE_WS_URL as string | undefined;

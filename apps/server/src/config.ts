@@ -17,6 +17,8 @@ export interface ServerConfig {
   countdownMs: number;
   releaseAtMs: number;
   trafficCount: number;
+  /** Rehearsal/test only: allow POST /api/host/warp. Never enable on event day. */
+  allowTimeWarp: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -44,5 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     countdownMs: Number(env.COUNTDOWN_MS ?? BALANCE.countdownMs),
     releaseAtMs: Number(env.RELEASE_AT_MS ?? BALANCE.releaseAtMs),
     trafficCount: Number(env.TRAFFIC_AGENTS ?? BALANCE.trafficAgents),
+    allowTimeWarp: env.ALLOW_TIME_WARP === 'true',
   };
 }

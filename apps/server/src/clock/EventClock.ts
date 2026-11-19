@@ -84,6 +84,14 @@ export class EventClock {
     this.state = { ...this.state, pausedMs: this.state.pausedMs + (now - this.state.pausedAt), pausedAt: null };
   }
 
+  /** Rehearsal/test only (ALLOW_TIME_WARP): jump forward to a LIVE elapsed time. Never backwards. */
+  warpTo(now: number, targetElapsedMs: number) {
+    if (!this.started) throw new Error('not started');
+    const delta = targetElapsedMs - this.elapsedMs(now) + (this.runningMs(now) < this.countdownMs ? this.countdownMs - this.runningMs(now) : 0);
+    if (delta <= 0) throw new Error('can only warp forward');
+    this.state = { ...this.state, startedAt: this.state.startedAt! - delta };
+  }
+
   snapshot(now: number): ClockState {
     const status = this.status(now);
     const running = this.runningMs(now);

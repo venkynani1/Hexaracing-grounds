@@ -193,6 +193,20 @@ export const challengeClues = pgTable(
   (t) => [uniqueIndex('challenge_clues_uq').on(t.challengeId, t.teamId, t.role)],
 );
 
+/** Per-squad variant of a challenge (seeded parameters): public prompt + hashed answer. */
+export const challengeVariants = pgTable(
+  'challenge_variants',
+  {
+    id: id(),
+    challengeId: uuid('challenge_id').notNull().references(() => challenges.id),
+    teamId: uuid('team_id').notNull().references(() => teams.id),
+    payload: jsonb('payload').notNull(),
+    answerHash: text('answer_hash').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('challenge_variants_uq').on(t.challengeId, t.teamId)],
+);
+
 export const challengeSubmissions = pgTable(
   'challenge_submissions',
   {

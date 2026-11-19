@@ -30,6 +30,8 @@ export default defineConfig({
         // Short countdown and immediate release so the smoke test can drive within seconds.
         COUNTDOWN_MS: '2000',
         RELEASE_AT_MS: '0',
+        // Rehearsal-only clock warp so the test can reach the 10:00 challenges in seconds.
+        ALLOW_TIME_WARP: 'true',
       },
     },
     {

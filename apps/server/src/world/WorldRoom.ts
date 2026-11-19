@@ -31,6 +31,7 @@ import { EventClock, type ClockPersisted } from '../clock/EventClock';
 import { conflict } from '../http/errors';
 import { audit } from '../services/audit';
 import type { PlayerRow, RegistrationService, TeamRow } from '../services/registration';
+import type { SquadService } from '../squad/SquadService';
 
 export interface WorldRoomOptions {
   eventId: string;
@@ -122,6 +123,40 @@ export class WorldRoom {
     this.registration = r;
   }
 
+  squad: SquadService | null = null;
+
+  attachSquad(sq: SquadService) {
+    this.squad = sq;
+    sq.onTeamChanged = (teamId) => this.pushSquad(teamId);
+  }
+
+  /** Push each connected player its OWN role-filtered squad view (private clues never cross roles). */
+  pushSquad(teamId: string | null) {
+    if (!this.squad) return;
+    for (const [ws, ctx] of this.clients) {
+      if (ctx.kind !== 'player' || (teamId && ctx.teamId !== teamId) || ws.readyState !== ws.OPEN) continue;
+      this.sendRaw(ws, JSON.stringify({ t: 'squad', view: this.squad.viewFor(ctx.teamId, ctx.role, ctx.playerId) } satisfies ServerMessage));
+    }
+  }
+
+  sendSquadTo(ws: WebSocket) {
+    const ctx = this.clients.get(ws);
+    if (!this.squad || !ctx || ctx.kind !== 'player') return;
+    this.sendRaw(ws, JSON.stringify({ t: 'squad', view: this.squad.viewFor(ctx.teamId, ctx.role, ctx.playerId) } satisfies ServerMessage));
+  }
+
+  /** Rehearsal/test only: jump the official clock forward (audit-logged; disabled unless configured). */
+  async warp(toElapsedMs: number): Promise<ClockState> {
+    try {
+      this.clock.warpTo(this.now(), toElapsedMs);
+    } catch (e) {
+      throw conflict('CANNOT_WARP', (e as Error).message);
+    }
+    const snap = await this.afterControl('host:warp');
+    await this.tick();
+    return snap;
+  }
+
   registrationOpen = (): boolean => !this.clock.started && this.clock.persisted.preStartStatus === 'REGISTRATION_OPEN';
 
   clockState(): ClockState {
@@ -211,6 +246,7 @@ export class WorldRoom {
       br: c.braking,
       g: this.sim.isGhost(c),
       rs: this.sim.canReset(c),
+      bf: this.sim.activeBuffs(c.teamId).map((b) => [b.kind, b.remainingMs] as [typeof b.kind, number]),
     };
   }
 
@@ -374,6 +410,7 @@ export class WorldRoom {
       }
       this.lastElapsed = Math.max(this.lastElapsed, elapsed);
     }
+    if (this.squad) await this.squad.onTick();
     if (changed) {
       const cause =
         snap.status !== this.lastStatus ? `status:${this.lastStatus}->${snap.status}` : `phase:${this.lastPhase}->${snap.phase}`;
@@ -428,6 +465,7 @@ export class WorldRoom {
     await this.persist(this.clock.snapshot(t), 'host:start:lock_registration');
     this.clock.start(t);
     await this.spawnCars();
+    await this.squad?.activate([...this.sim.cars.keys()]);
     const snap = this.clock.snapshot(t);
     await this.persist(snap, 'host:start:countdown');
     await audit(this.dbh.db, this.eventId, 'host', null, 'event.start', { force: !!opts.force, squads: ov.squadCount });

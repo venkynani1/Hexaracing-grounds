@@ -2,6 +2,7 @@ import type { VehicleCode } from '../enums';
 import type { InputMessage, InputTuple, NetCar, Snapshot } from '../protocol';
 import { applyImpact, driveEnv, NEUTRAL_INPUT, stepVehicle, VEHICLES, wrapAngle, type VehicleInput, type VehicleState } from '../sim/vehicle';
 import { isOnRoad, resolveStatic, type Building, type RoadNetwork } from '../sim/road';
+import { applyBuffs, type BuffKind } from '../squad';
 
 const DT = 0.05;
 
@@ -23,7 +24,9 @@ export class Predictor {
   errH = 0;
   lastCorrection = 0;
   braking = false;
+  private baseParams = VEHICLES.vortex_gt;
   private params = VEHICLES.vortex_gt;
+  private buffKey = '';
   /** Recent inputs, repeated in each message for loss tolerance. */
   private history: InputTuple[] = [];
 
@@ -66,7 +69,13 @@ export class Predictor {
     this.rain = snap.rain;
     if (!snap.me) return;
     const vc = snap.me.vc as VehicleCode;
-    if (VEHICLES[vc] && VEHICLES[vc] !== this.params) this.params = VEHICLES[vc];
+    const buffs = (snap.me.bf ?? []).map(([k]) => k as BuffKind).sort();
+    const key = `${vc}:${buffs.join(',')}`;
+    if (key !== this.buffKey && VEHICLES[vc]) {
+      this.buffKey = key;
+      this.baseParams = VEHICLES[vc];
+      this.params = applyBuffs(this.baseParams, buffs);
+    }
     const auth = fromNet(snap.me);
     if (!this.state) {
       this.state = auth;

@@ -1,5 +1,6 @@
 import type { EventStatus, Role } from './enums';
 import type { PhaseId } from './timeline';
+import type { BuffKind, SquadView } from './squad';
 
 /* ---------------- HTTP DTOs ---------------- */
 
@@ -129,6 +130,8 @@ export interface NetCar {
   g: boolean;
   /** a safe reset is available (stuck, or victim of ramming) */
   rs: boolean;
+  /** active buffs [kind, remaining ms] — client prediction applies the same modifiers */
+  bf: [BuffKind, number][];
 }
 
 export const CAR_FLAG_BRAKING = 1;
@@ -189,4 +192,5 @@ export type ServerMessage =
   | Snapshot
   | { t: 'car'; tick: number; car: NetCar; released: boolean }
   | MapMessage
+  | { t: 'squad'; view: SquadView }
   | { t: 'error'; error: string; message: string };

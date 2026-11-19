@@ -39,11 +39,13 @@ Status: automated M2 tests pass locally (`npm test` 50 tests, `npm run test:e2e`
 Status: all in `apps/server/test/multiplayer.test.ts`, passing locally. Real-time run (29 bots + 1 browser racer, 45 s, localhost): 1 room, 0 disconnects, 31.5 KB/s avg downstream per racer, 19.4 snapshots/s, server tick 20 Hz p99 1.74 ms. First GitHub Actions run still to be observed.
 
 ## M4 — Four-player squad mechanics
-- [ ] Engineer challenge: correct answer → scoring event + vehicle buff applied to the real squad car on server.
-- [ ] Deceiver bluffing: one entry per team, cannot vote own team, one vote per player, points deterministic.
-- [ ] Captain: navigation choice, power-up deploy, combined four-key submission.
-- [ ] Private clues: a player's WS stream never contains another role's clue (assert over full message log).
-- [ ] Playwright: four browser contexts, each role UI active simultaneously during one challenge.
+- [x] Engineer challenge: correct answer → scoring event + vehicle buff applied to the real squad car on server.
+- [x] Deceiver bluffing: one entry per team, cannot vote own team, one vote per player, points deterministic.
+- [x] Captain: navigation choice, power-up deploy, combined four-key submission.
+- [x] Private clues: a player's WS stream never contains another role's clue (assert over full message log).
+- [x] Playwright: four browser contexts, each role UI active simultaneously during one challenge.
+
+Status: `apps/server/test/squad.test.ts` (+ `content.test.ts`, which executes every generated snippet to verify answer keys) and `apps/web/e2e/lobby.spec.ts` pass locally. First GitHub Actions run still to be observed.
 
 ## M5 — Chennai geography
 - [ ] mapbuild produces a connected graph: every enabled start location has a path to Hexaware (graph test).

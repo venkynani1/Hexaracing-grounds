@@ -62,7 +62,7 @@ npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M3 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M4 (four-player squad mechanics: Engineer, Deceiver, Captain consoles wired to the real car).
+M1–M4 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M5 (Chennai geography: OSM road graph, verified start locations, route normalisation, attribution).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -86,3 +86,11 @@ M1–M3 implemented and tested locally (M2's manual phone-FPS check still open) 
 - Anti-ramming: `RAMMING` in WorldSim (≥ 3 dominant hits ≥ 5 m/s on the same squad in 10 s → 5 s ghost-out, penalty + audit `driving.ghost_out`, victim free reset). Stuck: reset offered at 3 s, auto at 6 s.
 - Interest (`WorldRoom.broadcastWorld`): near ≤ 300 m every tick, mid ≤ 1200 m every 4th, far only on the `map` channel (players 1 Hz, host 5 Hz); 10% hysteresis. Car tuples use compact `cid`; names come from the map channel.
 - `tools/loadtest` — `Bot` (real protocol) + CLI: `npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-key <key> --start` (raise `JOIN_RATE_LIMIT` on the server first).
+
+## Code map (M4)
+- `packages/shared/src/squad.ts` — public schedule (`CHALLENGE_SCHEDULE`), rubric (`SQUAD_RUBRIC`, documented in `docs/SCORING.md`), buffs (`applyBuffs`, used by server AND client prediction), power-ups, waypoints, `SquadView` types.
+- `apps/server/src/squad/content.ts` — SERVER-ONLY original question/puzzle generators (seeded per squad). Never import from web.
+- `apps/server/src/squad/SquadService.ts` — challenges, bluffing, Captain actions, idempotent submissions, `scoring_events`, effects on the real car via `WorldSim.addBuff/refillNitro/patch`. `viewFor(team, role, player)` is the ONLY path challenge data takes to a client.
+- HTTP: `/api/squad/*` (Bearer session; role checks in the service). WS: `{t:'squad', view}` pushed per connection.
+- `ALLOW_TIME_WARP=true` enables `POST /api/host/warp` (rehearsal/tests only; audit-logged). Never on event day.
+- `apps/web/src/pages/RoleConsole.tsx` — Engineer/Deceiver/Captain consoles; Racer gets clue + waypoint arrow in `RacerView`.

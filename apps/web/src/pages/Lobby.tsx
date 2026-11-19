@@ -9,7 +9,9 @@ import {
   type ServerMessage,
   type SessionResponse,
   type WorldInfo,
+  type SquadView,
 } from '@redline/shared';
+import { RoleConsole } from './RoleConsole';
 import type { WorldFeed } from '../game/RacerView';
 import { api, HttpError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -26,6 +28,7 @@ export function Lobby() {
   const [clock, setClock] = useState<ClockState | null>(null);
   const [error, setError] = useState('');
   const [world, setWorld] = useState<WorldInfo | null>(null);
+  const [squad, setSquad] = useState<SquadView | null>(null);
   const [telemetry, setTelemetry] = useState<{ car: NetCar; released: boolean } | null>(null);
   const snapListeners = useRef(new Set<(s: WorldFeed) => void>());
   const subscribe = useCallback((fn: (s: WorldFeed) => void) => {
@@ -70,7 +73,8 @@ export function Lobby() {
       setRoster(m.roster);
       setClock(m.clock);
       setWorld(m.world);
-    } else if (m.t === 'car') setTelemetry({ car: m.car, released: m.released });
+    } else if (m.t === 'squad') setSquad(m.view);
+    else if (m.t === 'car') setTelemetry({ car: m.car, released: m.released });
     else if (m.t === 'roster') setRoster(m.roster);
     else if (m.t === 'clock') setClock(m.clock);
   }, []);
@@ -95,7 +99,7 @@ export function Lobby() {
   if (inWorld && me?.role === 'RACER' && world) {
     return (
       <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the world…</p></main>}>
-        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} />
+        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} />
       </Suspense>
     );
   }
@@ -160,9 +164,10 @@ export function Lobby() {
               {!telemetry.released && <p className="hint">Cars release at 03:00.</p>}
             </div>
           )}
-          {inWorld && <p className="hint">Your role console (challenges, bluffing, strategy) arrives in Milestone 4.</p>}
+
         </div>
       </section>
+      {inWorld && squad && session && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} />}
     </main>
   );
 }

@@ -281,7 +281,7 @@ describe('M3: prediction & reconciliation under latency and loss', () => {
     const r4 = (v: number) => Math.round(v * 10000) / 10000;
     const snapshot = (): Snapshot => {
       const s = car.state;
-      const me: NetCar = { cid: 1, id: 'me', n: 'Me', vc: 'vortex_gt', x: r2(s.x), z: r2(s.z), h: r4(s.heading), vx: r2(s.vx), vz: r2(s.vz), f: r2(s.fuel), hp: r2(s.health), tr: r2(s.tires), ni: r2(s.nitro), br: false, g: false, rs: false };
+      const me: NetCar = { cid: 1, id: 'me', n: 'Me', vc: 'vortex_gt', x: r2(s.x), z: r2(s.z), h: r4(s.heading), vx: r2(s.vx), vz: r2(s.vz), f: r2(s.fuel), hp: r2(s.health), tr: r2(s.tires), ni: r2(s.nitro), br: false, g: false, rs: false, bf: [] };
       return { t: 'snap', tick: sim.tick, simMs: sim.simMs, serverTime: 0, rain: false, released: true, ack: car.ackSeq, me, cars: [], traffic: [] };
     };
     const corrections: number[] = [];

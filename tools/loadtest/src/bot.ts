@@ -54,6 +54,9 @@ export class Bot {
   /** Snapshots by tick (kept when `keepSnaps` is on). */
   readonly snaps = new Map<number, Snapshot>();
   readonly maps: MapMessage[] = [];
+  /** Every raw message received (when keepLog) — used to prove what a player could ever see. */
+  readonly log: string[] = [];
+  lastSquad: Extract<ServerMessage, { t: 'squad' }>['view'] | null = null;
   predictor: Predictor | null = null;
   readonly stats: BotStats = { messages: 0, bytes: 0, byType: {}, snaps: 0, corrections: [] };
   closed = false;
@@ -61,7 +64,7 @@ export class Bot {
 
   constructor(
     readonly label: string,
-    private readonly opts: { keepSnaps?: boolean; origin?: string } = {},
+    private readonly opts: { keepSnaps?: boolean; keepLog?: boolean; origin?: string } = {},
   ) {}
 
   /** Connect to the world channel and complete the hello handshake. */
@@ -85,6 +88,7 @@ export class Bot {
   private onMessage(raw: string) {
     this.stats.messages++;
     this.stats.bytes += raw.length;
+    if (this.opts.keepLog) this.log.push(raw);
     const m = JSON.parse(raw) as ServerMessage;
     this.stats.byType[m.t] = (this.stats.byType[m.t] ?? 0) + 1;
     if (m.t === 'snap') {
@@ -96,6 +100,8 @@ export class Bot {
         this.predictor.onSnapshot(m);
         if (had) this.stats.corrections.push(this.predictor.lastCorrection);
       }
+    } else if (m.t === 'squad') {
+      this.lastSquad = m.view;
     } else if (m.t === 'map') {
       this.lastMap = m;
       if (this.opts.keepSnaps) this.maps.push(m);

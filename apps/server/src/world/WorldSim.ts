@@ -25,6 +25,9 @@ import {
   type VehicleInput,
   type VehicleParams,
   type VehicleState,
+  BUFFS,
+  applyBuffs,
+  type BuffKind,
 } from '@redline/shared';
 
 export const SIM_DT = 0.05;
@@ -71,6 +74,8 @@ export interface SimCar {
   freeReset: boolean;
   stuckMs: number;
   inputBudget: number;
+  /** Active buffs: kind → simMs expiry. Effects are applied in the shared model (client predicts them too). */
+  buffs: Map<BuffKind, number>;
 }
 
 export interface Penalty {
@@ -147,6 +152,7 @@ export class WorldSim {
         freeReset: false,
         stuckMs: 0,
         inputBudget: INPUT_BUDGET_MAX,
+        buffs: new Map(),
       });
     });
   }
@@ -252,11 +258,43 @@ export class WorldSim {
     this.tick++;
   }
 
+  /* ---------- squad effects on the real car (M4) ---------- */
+
+  addBuff(teamId: string, kind: BuffKind) {
+    const car = this.cars.get(teamId);
+    if (car) car.buffs.set(kind, Math.max(car.buffs.get(kind) ?? 0, this.simMs) + BUFFS[kind].durationMs);
+  }
+
+  activeBuffs(teamId: string): { kind: BuffKind; remainingMs: number }[] {
+    const car = this.cars.get(teamId);
+    if (!car) return [];
+    const out: { kind: BuffKind; remainingMs: number }[] = [];
+    for (const [kind, until] of car.buffs) if (until > this.simMs) out.push({ kind, remainingMs: until - this.simMs });
+    return out;
+  }
+
+  refillNitro(teamId: string) {
+    const car = this.cars.get(teamId);
+    if (car) car.state = { ...car.state, nitro: 100 };
+  }
+
+  patch(teamId: string, amount: number) {
+    const car = this.cars.get(teamId);
+    if (car) car.state = { ...car.state, health: Math.min(100, car.state.health + amount) };
+  }
+
+  private effectiveParams(car: SimCar) {
+    if (!car.buffs.size) return car.params;
+    const active: BuffKind[] = [];
+    for (const [k, until] of car.buffs) if (until > this.simMs) active.push(k);
+    return applyBuffs(car.params, active.sort());
+  }
+
   /** One physics step of one car (shared model + static collisions + stuck detection). */
   private drive(car: SimCar, raw: VehicleInput, dt: number) {
     const input = this.released ? raw : NEUTRAL_INPUT;
     const env = driveEnv(isOnRoad(this.net, car.state.x, car.state.z), this.rain);
-    let s = stepVehicle(car.state, input, car.params, env, dt);
+    let s = stepVehicle(car.state, input, this.effectiveParams(car), env, dt);
     const hit = resolveStatic(s, this.buildings, this.net.bounds);
     s = hit.impact > 0 ? applyImpact(hit.state, hit.impact, car.params) : hit.state;
     car.state = s;

@@ -13,6 +13,8 @@ import {
   type ClientMessage,
   type MapMessage,
   type Snapshot,
+  type SquadView,
+  WAYPOINTS,
 } from '@redline/shared';
 import { InputState, type Control } from './input';
 import { drawMap, type MapDot } from './minimap';
@@ -28,6 +30,7 @@ export interface RacerViewProps {
   offset: number;
   send: (m: ClientMessage) => void;
   subscribe: (fn: (m: WorldFeed) => void) => () => void;
+  squad: SquadView | null;
 }
 
 interface Hud {
@@ -44,6 +47,9 @@ interface Hud {
   others: number;
   ghost: boolean;
   canReset: boolean;
+  /** waypoint arrow: angle relative to car heading (rad) and distance (m) */
+  wpAngle: number | null;
+  wpDist: number;
 }
 
 const STEP_MS = 50;
@@ -141,6 +147,8 @@ export default function RacerView(props: RacerViewProps) {
         const dots: MapDot[] = [];
         for (const [cid, r] of roster) if (cid !== myCid && !nearIds.has(cid)) dots.push({ id: cid, x: r.x, z: r.z, heading: r.heading, color: '#ff8a9a' });
         for (const c of near) dots.push({ id: c.id, x: c.x, z: c.z, heading: c.heading, ghost: (c.flags & CAR_FLAG_GHOST) !== 0 });
+        const wpNode = waypointNode(propsRef.current.squad);
+        if (wpNode) dots.push({ id: 'wp', x: wpNode.x, z: wpNode.z, heading: 0, color: '#38c8ff' });
         if (pose) dots.push({ id: 'me', x: pose.x, z: pose.z, heading: pose.heading, me: true });
         const ctx = mapRef.current.getContext('2d');
         if (ctx) drawMap(ctx, net, dots);
@@ -169,6 +177,12 @@ export default function RacerView(props: RacerViewProps) {
           others: lastSnap.othersN,
           ghost: !!lastMe?.g,
           canReset: !!lastMe?.rs,
+          ...(() => {
+            const wp = waypointNode(propsRef.current.squad);
+            if (!wp) return { wpAngle: null, wpDist: 0 };
+            const bearing = Math.atan2(wp.x - pose.x, wp.z - pose.z);
+            return { wpAngle: bearing - pose.heading, wpDist: Math.hypot(wp.x - pose.x, wp.z - pose.z) };
+          })(),
         });
       }
     });
@@ -250,6 +264,7 @@ export default function RacerView(props: RacerViewProps) {
           Safe reset to lane
         </button>
       )}
+      {props.squad && <RacerSquadHud squad={props.squad} hud={hud} />}
       <canvas ref={mapRef} className="minimap" width={240} height={240} data-testid="minimap" aria-label="Map of all squads" />
       <div className="hud-speed" data-testid="hud-speed" data-speed={Math.round(hud?.speed ?? 0)}>
         <span>{Math.round(hud?.speed ?? 0)}</span>
@@ -271,6 +286,37 @@ export default function RacerView(props: RacerViewProps) {
         <button className="pad brake" {...hold('brake')} data-testid="btn-brake" aria-label="Brake">BRAKE</button>
         <button className="pad gas" {...hold('throttle')} data-testid="btn-throttle" aria-label="Throttle">GAS</button>
       </div>
+    </div>
+  );
+}
+
+const NET = createTestNetwork();
+function waypointNode(squad: SquadView | null) {
+  const wp = squad?.waypoint ? WAYPOINTS.find((w) => w.id === squad.waypoint) : null;
+  return wp ? NET.nodes[wp.node]! : null;
+}
+
+/** Racer's slice of squad play: own private clue, Captain's waypoint arrow, buffs. */
+function RacerSquadHud({ squad, hud }: { squad: SquadView; hud: Hud | null }) {
+  const clue = squad.challenges.find((c) => c.status === 'open' && c.clue);
+  const wp = squad.waypoint ? WAYPOINTS.find((w) => w.id === squad.waypoint) : null;
+  return (
+    <div className="racer-squad">
+      {wp && hud?.wpAngle != null && (
+        <div className="wp" data-testid="racer-waypoint">
+          <span className="wp-arrow" style={{ transform: `rotate(${hud.wpAngle}rad)` }}>▲</span>
+          <span>{wp.label} · {Math.round(hud.wpDist)} m</span>
+        </div>
+      )}
+      {clue && (
+        <div className="racer-clue" data-testid="racer-clue">
+          <span className="eyebrow">{clue.title} — your clue</span>
+          <div>{clue.clue}</div>
+        </div>
+      )}
+      {squad.buffs.map((b) => (
+        <span key={b.kind} className="chip">⚡ {b.kind.replace('_', ' ')}</span>
+      ))}
     </div>
   );
 }

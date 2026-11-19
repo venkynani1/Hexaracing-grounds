@@ -3,6 +3,7 @@ import { HOST_KEY, SERVER_URL } from '../playwright.config';
 
 test.describe.configure({ mode: 'serial' });
 let racerPage: Page;
+let squadPages: { captain: Page; racer: Page; engineer: Page; deceiver: Page };
 
 async function newPage(browser: Browser): Promise<Page> {
   const ctx = await browser.newContext();
@@ -64,6 +65,7 @@ test('M1: scan → create squad → 3 contexts join → all see full lobby → h
   for (const p of [captain, pages[2]!, pages[3]!]) await expect(p.getByTestId('clock')).toHaveAttribute('data-status', /COUNTDOWN|LIVE/);
   await expect(host.getByTestId('clock')).toHaveAttribute('data-status', /COUNTDOWN|LIVE/);
   racerPage = pages[1]!;
+  squadPages = { captain, racer: pages[1]!, engineer: pages[2]!, deceiver: pages[3]! };
 });
 
 test('M2: racer view renders the world, FPS > 0, touch input moves the car on the server', async ({ request }) => {
@@ -97,6 +99,72 @@ test('M2: racer view renders the world, FPS > 0, touch input moves the car on th
   await host.getByTestId('host-login').click();
   await expect(host.getByTestId('host-map')).toBeVisible({ timeout: 10_000 });
   await expect(host.getByText(/1 squad cars/)).toBeVisible();
+});
+
+/** Decode the four private clues exactly as teammates would read them out to their Captain. */
+function decodeFourKey(c: { RACER: string; ENGINEER: string; DECEIVER: string; CAPTAIN: string }): string {
+  const plus = c.RACER.match(/plus (\d+)/);
+  if (plus) {
+    const [, k, j] = c.ENGINEER.match(/power (\d+), minus (\d+)/)!.map(Number) as [number, number, number];
+    const w = c.DECEIVER.match(/“(.+)”/)![1]!.length;
+    const [, m, n] = c.CAPTAIN.match(/(\d+) × 3, minus (\d+)/)!.map(Number) as [number, number, number];
+    return `${Number(plus[1]) + 2}${2 ** k - j}${w}${3 * m - n}`;
+  }
+  const s1 = c.RACER.match(/start at “(.)” and count (\d+)/);
+  const l1 = s1 ? String.fromCharCode(s1[1]!.charCodeAt(0) + Number(s1[2])) : c.RACER.match(/is “(.)”/)![1];
+  const l2 = String.fromCharCode(Number(c.ENGINEER.match(/code (\d+)/)![1]));
+  const ords = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+  const [, ord, word] = c.DECEIVER.match(/the (\w+) letter of the word “(.+)”/)!;
+  const l4 = String.fromCharCode(64 + Number(c.CAPTAIN.match(/number (\d+)/)![1]));
+  return `${l1}${l2}${word![ords.indexOf(ord!)]}${l4}`;
+}
+
+test('M4: four browser contexts, every role UI active at once during one challenge window', async ({ request }) => {
+  const { captain, racer, engineer, deceiver } = squadPages;
+  const warp = (toElapsedMs: number) => request.post(`${SERVER_URL}/api/host/warp`, { headers: { 'x-host-key': HOST_KEY }, data: { toElapsedMs } });
+
+  // 09:30 — Coding Round 1 is open: the Engineer answers on their phone.
+  expect((await warp(9.5 * 60_000)).ok()).toBe(true);
+  await expect(engineer.getByTestId('role-console')).toHaveAttribute('data-role', 'ENGINEER');
+  const q1 = engineer.getByTestId('question-1');
+  await expect(q1.locator('pre.code')).not.toBeEmpty();
+  if (await q1.locator('input').count()) {
+    await q1.locator('input').fill('0');
+    await q1.getByRole('button', { name: 'Submit' }).click();
+  } else await q1.locator('.btn.opt').first().click();
+  await expect(engineer.getByTestId('question-1-result')).toHaveText(/Correct|attempt|No attempts/);
+
+  // 10:45 — Four-Key Puzzle 1 + Bluff Round 1 writing: all four roles are active simultaneously.
+  expect((await warp(10.75 * 60_000)).ok()).toBe(true);
+  const clueOf = async (p: Page, testid: string) => (await p.getByTestId(testid).locator('div').last().innerText()).trim();
+  await expect(racer.getByTestId('racer-clue')).toBeVisible();
+  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('clue-fourkey-1')).toBeVisible();
+  const clues = {
+    RACER: await clueOf(racer, 'racer-clue'),
+    ENGINEER: await clueOf(engineer, 'clue-fourkey-1'),
+    DECEIVER: await clueOf(deceiver, 'clue-fourkey-1'),
+    CAPTAIN: await clueOf(captain, 'clue-fourkey-1'),
+  };
+  // Each phone shows a different, private clue.
+  expect(new Set(Object.values(clues)).size).toBe(4);
+  // Only the Captain gets the submit form.
+  await expect(engineer.getByTestId('fourkey-input-fourkey-1')).toHaveCount(0);
+
+  // Deceiver writes a bluff while the Captain combines the clues the squad read out.
+  await deceiver.getByTestId('bluff-input-bluff-1').fill('A tiny cricket');
+  await deceiver.getByTestId('bluff-submit-bluff-1').click();
+  await captain.getByTestId('fourkey-input-fourkey-1').fill(decodeFourKey(clues));
+  await captain.getByTestId('fourkey-submit-fourkey-1').click();
+  await expect(captain.getByTestId('fourkey-result-fourkey-1')).toHaveText(/Correct! \+75/);
+  await expect(deceiver.getByTestId('bluff-entry-bluff-1')).toContainText('A tiny cricket');
+  // Squad score is shared by all role consoles (derived from server scoring events).
+  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('squad-score')).toHaveText(/^(75|85|100) pts$/);
+
+  // Captain sets a waypoint: the Racer's HUD shows the arrow toward it.
+  await captain.getByTestId('wp-north_gate').click();
+  await expect(racer.getByTestId('racer-waypoint')).toContainText('North Gate');
+  await racer.screenshot({ path: 'test-results/m4-racer.png' });
+  await captain.screenshot({ path: 'test-results/m4-captain.png', fullPage: true });
 });
 
 test('registration is closed for new squads after START', async ({ browser }) => {

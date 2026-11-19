@@ -2,6 +2,32 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-19 — Milestone 4: Four-player squad mechanics
+
+### What runs
+- **Synchronised challenge schedule** driven by the Director clock (same windows for every squad): Coding 1 (03:00), Four-Key 1 (10:00), Bluff 1 (10:30), Navigation (24:00), Bluff 2 (25:00), Coding 2 (33:00), Four-Key 2 (42:00).
+- **Engineer**: 4 original coding/debug questions per round (JS + Python output prediction, debugging MC), per-squad seeded variants. Correct → `CODING` scoring event and a 45 s **engine-tune buff on the real server car** (client prediction applies the same buff via shared `applyBuffs`).
+- **Deceiver**: bluff rounds with verified true answers; write → vote → results; one entry per squad, no truth/duplicate entries, no own-squad vote, one vote per player (app + DB constraints); deterministic settlement; detection grants a nitro power-up.
+- **Captain**: waypoint selection (arrow + distance on the Racer's HUD, marker on the minimap), power-ups (nitro refill, pit-crew patch, grip boost) applied to the real car, navigation intel challenge, combined four-key submission.
+- **Racer**: own private four-key clue in the HUD, waypoint arrow, buff chips — while driving.
+- **Privacy & integrity**: per-role views built server-side (the only path), clues AES-GCM-encrypted at rest, answer keys never sent, idempotency keys on submissions, per-player action rate limit, totals derived from `scoring_events`.
+- `docs/SCORING.md` documents the rubric. New table `challenge_variants` (migration 0002).
+- Rehearsal-only `ALLOW_TIME_WARP` host endpoint (off by default) used by the browser test to jump to 10:00.
+
+### Tested
+- `npm test`: 84 tests. New: `squad.test.ts` (Engineer scoring + idempotency + buff makes the squad car out-accelerate an unbuffed one on the server; four-key clue per role + encrypted storage + Captain-only submit; bluff rules and exact deterministic points; Captain waypoint, power-ups on the real car, inventory, navigation; clue privacy over the full WS logs of 12 players in 3 squads; warp disabled by default), `content.test.ts` (every coding template's answer verified by **executing** the JS/Python snippet across 40 seeds; four-key clues decode to the answer across 300 seeds; navigation answer is the nearest waypoint), shared rubric/buff tests.
+- `npm run test:e2e`: 4 tests. New M4: four browser contexts — Engineer answers a coding question at 09:30; at 10:45 all four phones show different private clues (Racer in the HUD), the Deceiver writes a bluff while the Captain types the code decoded from the four phones' clues → "Correct! +75" on all consoles; Captain's waypoint appears on the Racer's HUD.
+
+### Known limitations / open risks
+- Challenge state lives in memory (DB has every submission/vote/score). Server restart mid-event regenerates identical variants from the seed but loses attempt counters — snapshot recovery is M8.
+- Identical clue text can occur for two squads (small parameter ranges); harmless (answers still per squad) but noted.
+- Content volume is small (8 coding templates, 2 four-key templates, 6 bluff prompts) — enough for one event; more variety before rehearsal.
+- Voting is for Deceivers only; other roles see prompt/results. Revisit after a playtest if the Deceiver queue feels thin.
+- `CAPTAIN_STRATEGY` remaining 50, `FUEL_MANAGEMENT`, `DRIVING`, `HEXAWARE_GATE` arrive in M5–M7.
+
+### Next (M5)
+- `tools/mapbuild`: OSM (ODbL) extract → road graph in the existing network format; verified start locations (with `verified_at`); connectivity test to Hexaware; route calibration ±10%; OSM attribution in-game and in credits. Needs network access to an OSM extract source.
+
 ## 2026-11-19 — Milestone 3: Actual multiplayer (5 → 10 → 20 → 30 in one world)
 
 ### What runs

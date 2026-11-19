@@ -13,6 +13,7 @@ import { RateLimiter } from './http/rateLimit';
 import { RegistrationService } from './services/registration';
 import { WorldRoom, clockFromEventRow } from './world/WorldRoom';
 import { WorldSim } from './world/WorldSim';
+import { SquadService, type Actor } from './squad/SquadService';
 import { audit } from './services/audit';
 
 export interface BuiltServer {
@@ -55,7 +56,22 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const signer = new TokenSigner(config.sessionSecret);
   const registration = new RegistrationService(db.db, signer, event.id, room.registrationOpen, now);
   room.attachRegistration(registration);
-  if (clock.started) await room.spawnCars();
+  const squad = new SquadService(
+    db.db,
+    event.id,
+    String(event.seed),
+    sim,
+    () => {
+      const t = now();
+      return { live: clock.status(t) === 'LIVE', elapsedMs: clock.elapsedMs(t), started: clock.started };
+    },
+    config.sessionSecret,
+  );
+  room.attachSquad(squad);
+  if (clock.started) {
+    await room.spawnCars();
+    await squad.activate([...sim.cars.keys()]);
+  }
   if (autoPaused) await audit(db.db, event.id, 'system', null, 'event.recovered_paused', { at: now() });
 
   const app = Fastify({ logger: false, trustProxy: config.trustProxy, bodyLimit: 16 * 1024 });
@@ -126,6 +142,27 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     return { roster: room.toRoster(team!) };
   });
 
+  /* ---------- squad mechanics (M4) — role checks happen in SquadService ---------- */
+  const actionLimiter = new RateLimiter(120, 60_000, now);
+  const actor = async (req: FastifyRequest): Promise<Actor> => {
+    const s = await requirePlayer(req);
+    if (actionLimiter.hit(`act:${s.pid}`) > 0) throw new ApiError(429, 'RATE_LIMITED', 'Slow down');
+    return { playerId: s.pid, teamId: s.tid, role: s.player.role };
+  };
+  const body = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>;
+  const param = (req: FastifyRequest, k: string) => String((req.params as Record<string, string>)[k]);
+  app.get('/api/squad/view', async (req) => {
+    const a = await actor(req);
+    return squad.viewFor(a.teamId, a.role, a.playerId);
+  });
+  app.post('/api/squad/coding/:qid', async (req) => squad.answerCoding(await actor(req), param(req, 'qid'), body(req).answer, body(req).idempotencyKey));
+  app.post('/api/squad/fourkey/:id', async (req) => squad.submitFourKey(await actor(req), param(req, 'id'), body(req).answer, body(req).idempotencyKey));
+  app.post('/api/squad/navigation/:id', async (req) => squad.answerNavigation(await actor(req), param(req, 'id'), body(req).answer, body(req).idempotencyKey));
+  app.post('/api/squad/waypoint', async (req) => squad.setWaypoint(await actor(req), body(req).waypoint));
+  app.post('/api/squad/powerup', async (req) => squad.deployPowerUp(await actor(req), body(req).kind));
+  app.post('/api/squad/bluff/:id/entry', async (req) => squad.bluffEntry(await actor(req), param(req, 'id'), body(req).text));
+  app.post('/api/squad/bluff/:id/vote', async (req) => squad.bluffVote(await actor(req), param(req, 'id'), body(req).choiceId));
+
   /* ---------- host ---------- */
   app.get('/api/host/overview', { preHandler: requireHost }, async () => room.overview());
   app.post('/api/host/start', { preHandler: requireHost }, async (req) => {
@@ -133,6 +170,12 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     return { clock: await room.start({ force }) };
   });
   app.get('/api/host/world', { preHandler: requireHost }, async () => room.worldStatus());
+  app.post('/api/host/warp', { preHandler: requireHost }, async (req) => {
+    if (!config.allowTimeWarp) throw new ApiError(403, 'WARP_DISABLED', 'Time warp is disabled (rehearsal/test only)');
+    const to = Number(((req.body ?? {}) as { toElapsedMs?: unknown }).toElapsedMs);
+    if (!Number.isFinite(to) || to < 0) throw new ApiError(400, 'BAD_REQUEST', 'toElapsedMs required');
+    return { clock: await room.warp(to) };
+  });
   app.post('/api/host/pause', { preHandler: requireHost }, async () => ({ clock: await room.pause() }));
   app.post('/api/host/resume', { preHandler: requireHost }, async () => ({ clock: await room.resume() }));
 
@@ -203,6 +246,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
             clock: room.clockState(),
             world: { seed: sim.opts.seed, mapVersion: sim.net.version },
           });
+          room.sendSquadTo(ws);
           await room.broadcastRoster(s.tid);
         } else if (msg.t === 'host_hello') {
           if (typeof msg.hostKey !== 'string' || !safeEqual(msg.hostKey, config.hostAdminKey)) {
