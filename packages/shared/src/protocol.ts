@@ -72,7 +72,7 @@ export interface HostOverview {
   maxSquads: number;
   canStart: boolean;
   startBlockers: string[];
-  health: { db: boolean; tickHz: number; uptimeS: number };
+  health: { db: boolean; tickHz: number; tickP99Ms: number; uptimeS: number };
 }
 
 export interface ApiError {
@@ -82,16 +82,82 @@ export interface ApiError {
 
 /* ---------------- WebSocket messages (JSON, low-rate) ---------------- */
 
+/** Racer input for one 50 ms simulation step. seq must strictly increase (replays are dropped). */
+export interface InputMessage {
+  t: 'input';
+  seq: number;
+  st: number;
+  th: number;
+  br: number;
+  ni?: boolean;
+  hb?: boolean;
+}
+
 export type ClientMessage =
   | { t: 'hello'; sessionToken: string }
   | { t: 'host_hello'; hostKey: string }
-  | { t: 'ping'; clientTime: number };
+  | { t: 'ping'; clientTime: number }
+  | InputMessage;
+
+/** Full state of a squad car (own car / role telemetry). Positions rounded to 1 cm. */
+export interface NetCar {
+  id: string;
+  n: string;
+  x: number;
+  z: number;
+  h: number;
+  vx: number;
+  vz: number;
+  f: number;
+  hp: number;
+  tr: number;
+  ni: number;
+  /** braking (for brake lights) */
+  br: boolean;
+}
+/** [teamId, squadName, x, z, heading, speed, braking 0|1] */
+export type NetCarLite = [string, string, number, number, number, number, number];
+/** [id, typeCode, x, z, heading] */
+export type NetTraffic = [number, number, number, number, number];
+
+export interface Snapshot {
+  t: 'snap';
+  tick: number;
+  simMs: number;
+  serverTime: number;
+  rain: boolean;
+  released: boolean;
+  /** Last input seq applied to `me` (for client reconciliation). */
+  ack: number;
+  me: NetCar | null;
+  cars: NetCarLite[];
+  traffic: NetTraffic[];
+}
+
+export interface WorldInfo {
+  seed: string;
+  mapVersion: string;
+}
+
+export interface WorldStatus {
+  tick: number;
+  simMs: number;
+  released: boolean;
+  rain: boolean;
+  tickHz: number;
+  tickP99Ms: number;
+  trafficCount: number;
+  cars: { teamId: string; name: string; x: number; z: number; heading: number; speed: number; fuel: number; health: number }[];
+}
 
 export type ServerMessage =
-  | { t: 'welcome'; kind: 'player'; playerId: string; roomId: string; roster: Roster; clock: ClockState }
+  | { t: 'welcome'; kind: 'player'; playerId: string; roomId: string; roster: Roster; clock: ClockState; world: WorldInfo }
   | { t: 'welcome'; kind: 'host'; roomId: string; overview: HostOverview }
   | { t: 'roster'; roster: Roster }
   | { t: 'overview'; overview: HostOverview }
   | { t: 'clock'; clock: ClockState }
   | { t: 'pong'; clientTime: number; serverTime: number }
+  | Snapshot
+  | { t: 'car'; tick: number; car: NetCar; released: boolean }
+  | { t: 'cars'; tick: number; cars: NetCarLite[] }
   | { t: 'error'; error: string; message: string };

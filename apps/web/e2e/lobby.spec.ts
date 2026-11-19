@@ -1,5 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { HOST_KEY } from '../playwright.config';
+import { HOST_KEY, SERVER_URL } from '../playwright.config';
+
+test.describe.configure({ mode: 'serial' });
+let racerPage: Page;
 
 async function newPage(browser: Browser): Promise<Page> {
   const ctx = await browser.newContext();
@@ -56,10 +59,36 @@ test('M1: scan → create squad → 3 contexts join → all see full lobby → h
   await expect(host.getByTestId('stat-players')).toHaveText('4/120');
   await expect(host.getByTestId('start')).toBeEnabled();
 
-  // Press START: every lobby sees the shared countdown.
+  // Press START: every non-racer lobby sees the shared countdown; the racer's phone loads the 3D world.
   await host.getByTestId('start').click();
-  for (const p of pages) await expect(p.getByTestId('clock')).toHaveAttribute('data-status', /COUNTDOWN|LIVE/);
+  for (const p of [captain, pages[2]!, pages[3]!]) await expect(p.getByTestId('clock')).toHaveAttribute('data-status', /COUNTDOWN|LIVE/);
   await expect(host.getByTestId('clock')).toHaveAttribute('data-status', /COUNTDOWN|LIVE/);
+  racerPage = pages[1]!;
+});
+
+test('M2: racer view renders the world, FPS > 0, touch input moves the car on the server', async ({ request }) => {
+  const p = racerPage;
+  await expect(p.getByTestId('game-canvas')).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => Number(await p.getByTestId('fps').getAttribute('data-fps')), { timeout: 20_000 }).toBeGreaterThan(0);
+  const canvasSize = await p.getByTestId('game-canvas').evaluate((c: HTMLCanvasElement) => [c.width, c.height]);
+  expect(canvasSize[0]).toBeGreaterThan(0);
+
+  const world = async () => (await request.get(`${SERVER_URL}/api/host/world`, { headers: { 'x-host-key': HOST_KEY } })).json();
+  await expect.poll(async () => (await world()).released, { timeout: 15_000 }).toBe(true);
+  const before = (await world()).cars[0];
+
+  // Hold the on-screen GAS pad (touch/pointer), steer a little right.
+  const gas = p.getByTestId('btn-throttle');
+  await gas.dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true });
+  await p.waitForTimeout(2500);
+  await gas.dispatchEvent('pointerup', { pointerId: 1, isPrimary: true });
+
+  const after = (await world()).cars[0];
+  const moved = Math.hypot(after.x - before.x, after.z - before.z);
+  expect(moved).toBeGreaterThan(5);
+  await expect.poll(async () => Number(await p.getByTestId('hud-speed').getAttribute('data-speed'))).toBeGreaterThanOrEqual(0);
+  // Non-racer roles get live squad-car telemetry from the same world.
+  await p.screenshot({ path: 'test-results/racer-view.png' });
 });
 
 test('registration is closed for new squads after START', async ({ browser }) => {

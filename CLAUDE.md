@@ -62,7 +62,7 @@ npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-Milestone 1 (Foundation) implemented and tested locally — see docs/PROGRESS.md. Next: M2 (shared 3D world, single car) in docs/MILESTONES.md.
+M1 (Foundation) and M2 (shared 3D world, single car) implemented and tested locally; M2's manual phone-FPS check is still open — see docs/PROGRESS.md. Next: M3 (5 → 10 → 20 → 30 real cars in the same world).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -70,3 +70,12 @@ Milestone 1 (Foundation) implemented and tested locally — see docs/PROGRESS.md
 - `apps/server/src/world/WorldRoom.ts` — THE single world (one per event, enforced), owns `EventClock`, Director tick, connections, broadcasts.
 - `apps/server/src/services/registration.ts` — squads/join/roles/rejoin/sessions. `apps/server/src/app.ts` — Fastify routes + WS gateway.
 - `apps/web/src/pages` — Home (create/join), Lobby, Host.
+
+## Code map (M2)
+- `packages/shared/src/sim/vehicle.ts` — deterministic vehicle model (server + client prediction run the SAME code). Frame: x east, z north, heading 0 = north, clockwise.
+- `packages/shared/src/sim/road.ts` — road network format, synthetic test grid (replaced by OSM graph in M5), keep-LEFT lanes, signals (pure fn of sim time + seed), procedural buildings, static collision, spawn grid.
+- `packages/shared/src/sim/traffic.ts` — IDM car-following traffic, signals, junction connectors, lane changes, yields to squad cars.
+- `apps/server/src/world/WorldSim.ts` — the one world sim (cars + traffic + weather), fixed 50 ms step, input queue with replay guard.
+- `apps/server/src/world/WorldRoom.ts` — 20 Hz loop, spawn at START, release at 03:00, interest-filtered snapshots, `/api/host/world`.
+- `apps/web/src/game/` — Babylon scene, prediction/reconciliation + interpolation, input (keyboard + touch), RacerView HUD. Lazy-loaded chunk.
+- Test/dev knobs (env): `COUNTDOWN_MS`, `RELEASE_AT_MS`, `TRAFFIC_AGENTS`.

@@ -2,6 +2,29 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-19 — Milestone 2: Shared 3D world (single car)
+
+### What runs
+- **Shared simulation** (`packages/shared/src/sim`): deterministic arcade vehicle model (throttle/brake/reverse, grip-limited steering, slip + handbrake drift, nitro, fuel burn, tyre wear, bounded damage, limp mode on empty tank, rain grip ×0.8, off-road grip ×0.6); four cars with one shared top speed. Test road network (4×4 grid, 2 lanes each way, keep-left), deterministic signals, procedural original buildings, static collisions.
+- **Traffic** (server-only, one shared state): 100 agents (cars, motorcycles, buses, trucks) following lane centrelines, IDM car-following, stopping at red/amber, junction connectors with seeded turn choices, lane changes, yielding to squad cars.
+- **Server world**: `WorldSim` inside the single `WorldRoom`, fixed 20 Hz step (only while LIVE), squad cars spawned at START on a spawn grid, released at 03:00 (City Sprint). Racer inputs (seq, replay-guarded, queue cap 4, ≤ 60 msg/s), stale-input AI brake, car–car and car–traffic collisions (symmetric, damage capped). Snapshots: racer 20 Hz (own car + squad cars ≤ 1200 m + traffic ≤ 300 m), role clients 5 Hz squad-car telemetry, host 2 Hz all cars; `GET /api/host/world`; tick p99/Hz in host health.
+- **Client** (Babylon.js 8, lazy-loaded): roads, kerbs, lane markings and stop lines (thin instances), buildings (thin instances), live traffic signals, traffic instances, PBR clear-coat own car with brake/headlights, other squad cars interpolated 100 ms behind. Own-car prediction + reconciliation with smoothed corrections. Chase/hood/top cameras, quality presets (visual only), dynamic resolution, FPS counter. Touch pads (◀ ▶ GAS BRAKE NOS DRIFT) + keyboard. Non-racer roles see live squad-car telemetry in the lobby.
+
+### Tested
+- `npm test`: 50 tests. New: vehicle model (determinism, accel/top speed, braking/reverse, steering sign, rain grip, fuel/limp, nitro/tyres, bounded damage, equal top speed), geometry (keep-left lanes, buildings block cars, signal axes never both green), traffic (lane following through junctions, red-light stop then go, stop for blocked lanes, lane-change overtake, seed reproducibility), world sim (tick p99 benchmark ≈ 0.6 ms, replay rejection, release gate + AI brake, symmetric car collision), room integration over real WS (racer input moves the server car, ack in snapshots, captain cannot drive, telemetry, host world endpoint auth).
+- `npm run test:e2e`: 3 tests. New M2 smoke on Pixel 7 emulation: the racer's phone switches to the 3D view after START, the canvas renders, FPS > 0, and holding the GAS pad moves the car **on the server** (checked through `/api/host/world`).
+
+### Known limitations / open risks
+- **Phone FPS not measured.** Only headless software rendering here (~20 FPS). Needs a real mid-range Android check on Medium.
+- **Art is placeholder**: box cars, box buildings, no textures, no shadows, no rain particles, no audio yet. Visual fidelity (PBR env lighting, LODs, KTX2, particles, sound) is still to do; it's tracked against SPEC Part 1 and not claimed.
+- 3D chunk is 1.1 MB gzipped (Babylon root import). Switch to deep imports to cut it.
+- Predicted own car ignores traffic collisions (the server corrects). The input queue can drift if client and server tick rates diverge; M3 measures correction error under latency/loss.
+- Vehicle choice isn't wired yet (everyone drives Vortex GT); the showroom and Captain's car selection still need a milestone slot.
+- Squad cars spawn on one shared test grid; per-location start grids arrive with Chennai geography (M5).
+
+### Next (M3)
+- 5 → 10 → 20 → 30 headless racer bots in one room; per-N tests of shared positions (±0.5 m); overtakes; collision symmetry + anti-ramming ghost-out; latency/loss prediction error test; interest tiers with hysteresis; static singleton check.
+
 ## 2026-11-19 — Milestone 1: Foundation
 
 ### What runs

@@ -14,6 +14,9 @@ export interface ServerConfig {
   joinAttemptsPerMinute: number;
   trustProxy: boolean;
   directorIntervalMs: number;
+  countdownMs: number;
+  releaseAtMs: number;
+  trafficCount: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -38,5 +41,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     joinAttemptsPerMinute: Number(env.JOIN_RATE_LIMIT ?? BALANCE.joinAttemptsPerMinute),
     trustProxy: env.TRUST_PROXY === 'true',
     directorIntervalMs: 250,
+    countdownMs: Number(env.COUNTDOWN_MS ?? BALANCE.countdownMs),
+    releaseAtMs: Number(env.RELEASE_AT_MS ?? BALANCE.releaseAtMs),
+    trafficCount: Number(env.TRAFFIC_AGENTS ?? BALANCE.trafficAgents),
   };
 }

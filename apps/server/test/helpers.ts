@@ -15,6 +15,7 @@ export interface TestServer extends BuiltServer {
 let counter = 0;
 
 export async function makeServer(over: Partial<ServerConfig> = {}, opts: { manualClock?: boolean } = {}): Promise<TestServer> {
+  // Tests use a short countdown by default only when asked; keep production values otherwise.
   const db = await connectPglite();
   const config: ServerConfig = {
     ...loadConfig({ NODE_ENV: 'test', HOST_ADMIN_KEY: HOST_KEY, SESSION_SECRET: 'test-secret-'.padEnd(40, 'x') }),
@@ -60,3 +61,44 @@ export async function fullSquad(s: BuiltServer, name: string) {
   }
   return { captain: cap.body, others };
 }
+
+import WebSocket from 'ws';
+import type { ServerMessage } from '@redline/shared';
+
+export interface TestSocket {
+  ws: WebSocket;
+  inbox: ServerMessage[];
+  next: (pred: (m: ServerMessage) => boolean, timeoutMs?: number) => Promise<ServerMessage>;
+  send: (m: unknown) => void;
+}
+
+export function connectWs(base: string, origin = 'http://localhost:5173'): Promise<TestSocket> {
+  const ws = new WebSocket(base.replace('http', 'ws') + '/ws', { origin });
+  const inbox: ServerMessage[] = [];
+  const waiters: { pred: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] = [];
+  ws.on('message', (d) => {
+    const m = JSON.parse(d.toString()) as ServerMessage;
+    const i = waiters.findIndex((w) => w.pred(m));
+    if (i >= 0) waiters.splice(i, 1)[0]!.resolve(m);
+    else inbox.push(m);
+  });
+  const next = (pred: (m: ServerMessage) => boolean, timeoutMs = 5000) =>
+    new Promise<ServerMessage>((resolve, reject) => {
+      const i = inbox.findIndex(pred);
+      if (i >= 0) return resolve(inbox.splice(i, 1)[0]!);
+      const timer = setTimeout(() => reject(new Error('timeout waiting for message')), timeoutMs);
+      waiters.push({ pred, resolve: (m) => (clearTimeout(timer), resolve(m)) });
+    });
+  return new Promise((resolve, reject) => {
+    ws.once('open', () => resolve({ ws, inbox, next, send: (m) => ws.send(JSON.stringify(m)) }));
+    ws.once('error', reject);
+  });
+}
+
+export const until = async (cond: () => boolean, timeoutMs = 3000) => {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > timeoutMs) throw new Error('until: timeout');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+};

@@ -12,6 +12,7 @@ import { ApiError, unauthorized } from './http/errors';
 import { RateLimiter } from './http/rateLimit';
 import { RegistrationService } from './services/registration';
 import { WorldRoom, clockFromEventRow } from './world/WorldRoom';
+import { WorldSim } from './world/WorldSim';
 import { audit } from './services/audit';
 
 export interface BuiltServer {
@@ -48,11 +49,13 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const now = opts.now ?? Date.now;
   await seedCatalogue(db.db);
   const event = await loadOrCreateEvent(db, config);
-  const { clock, autoPaused } = clockFromEventRow(event, now());
-  const room = WorldRoom.create({ eventId: event.id, eventName: event.name, clock, db, now });
+  const { clock, autoPaused } = clockFromEventRow(event, now(), config.countdownMs);
+  const sim = new WorldSim({ seed: String(event.seed), trafficCount: config.trafficCount });
+  const room = WorldRoom.create({ eventId: event.id, eventName: event.name, clock, db, now, sim, releaseAtMs: config.releaseAtMs });
   const signer = new TokenSigner(config.sessionSecret);
   const registration = new RegistrationService(db.db, signer, event.id, room.registrationOpen, now);
   room.attachRegistration(registration);
+  if (clock.started) await room.spawnCars();
   if (autoPaused) await audit(db.db, event.id, 'system', null, 'event.recovered_paused', { at: now() });
 
   const app = Fastify({ logger: false, trustProxy: config.trustProxy, bodyLimit: 16 * 1024 });
@@ -129,6 +132,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     const force = ((req.body ?? {}) as { force?: unknown }).force === true;
     return { clock: await room.start({ force }) };
   });
+  app.get('/api/host/world', { preHandler: requireHost }, async () => room.worldStatus());
   app.post('/api/host/pause', { preHandler: requireHost }, async () => ({ clock: await room.pause() }));
   app.post('/api/host/resume', { preHandler: requireHost }, async () => ({ clock: await room.resume() }));
 
@@ -155,16 +159,18 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     const helloTimeout = setTimeout(() => {
       if (room.clients.get(ws)?.kind === 'pending') ws.close(4001, 'hello timeout');
     }, 10_000);
-    let windowStart = now();
+    // Abuse limits use real wall time, not the (injectable) game clock.
+    let windowStart = Date.now();
     let msgCount = 0;
     ws.on('message', async (raw) => {
       // Per-connection message rate limit (low-rate JSON channel).
-      const t = now();
+      const t = Date.now();
       if (t - windowStart > 1000) {
         windowStart = t;
         msgCount = 0;
       }
-      if (++msgCount > 30) return ws.close(4008, 'rate limited');
+      // Racers send 20 inputs/s + pings; 60/s is the hard ceiling (DESIGN §4).
+      if (++msgCount > 60) return ws.close(4008, 'rate limited');
       let msg: ClientMessage;
       try {
         msg = JSON.parse(raw.toString());
@@ -174,13 +180,25 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
       try {
         const ctx = room.clients.get(ws);
         if (msg.t === 'ping') return send(ws, { t: 'pong', clientTime: Number(msg.clientTime) || 0, serverTime: now() });
+        if (msg.t === 'input') {
+          room.handleInput(ws, msg);
+          return;
+        }
         if (ctx?.kind !== 'pending') return;
         if (msg.t === 'hello') {
           const s = await registration.authenticate(msg.sessionToken);
-          room.bindPlayer(ws, s.pid, s.tid);
+          room.bindPlayer(ws, s.pid, s.tid, s.player.role);
           clearTimeout(helloTimeout);
           const team = await registration.getTeam(s.tid);
-          send(ws, { t: 'welcome', kind: 'player', playerId: s.pid, roomId: room.roomId, roster: room.toRoster(team!), clock: room.clockState() });
+          send(ws, {
+            t: 'welcome',
+            kind: 'player',
+            playerId: s.pid,
+            roomId: room.roomId,
+            roster: room.toRoster(team!),
+            clock: room.clockState(),
+            world: { seed: sim.opts.seed, mapVersion: sim.net.version },
+          });
           await room.broadcastRoster(s.tid);
         } else if (msg.t === 'host_hello') {
           if (typeof msg.hostKey !== 'string' || !safeEqual(msg.hostKey, config.hostAdminKey)) {

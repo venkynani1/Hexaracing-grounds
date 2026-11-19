@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, ServerMessage } from '@redline/shared';
 import { wsUrl } from './api';
 
@@ -14,6 +14,11 @@ export function useWorldSocket(hello: ClientMessage | null, onMessage: (m: Serve
   const handler = useRef(onMessage);
   handler.current = onMessage;
   const helloKey = hello ? JSON.stringify(hello) : null;
+  const wsRef = useRef<WebSocket | null>(null);
+  const send = useCallback((m: ClientMessage) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m));
+  }, []);
 
   useEffect(() => {
     if (!helloKey) return;
@@ -26,6 +31,7 @@ export function useWorldSocket(hello: ClientMessage | null, onMessage: (m: Serve
     const open = () => {
       setStatus('connecting');
       ws = new WebSocket(wsUrl());
+      wsRef.current = ws;
       ws.onopen = () => {
         retry = 0;
         setStatus('open');
@@ -59,5 +65,5 @@ export function useWorldSocket(hello: ClientMessage | null, onMessage: (m: Serve
     };
   }, [helloKey]);
 
-  return { status, offset };
+  return { status, offset, send };
 }

@@ -3,10 +3,11 @@ import { defineConfig, devices } from '@playwright/test';
 const SERVER_PORT = 2599;
 const WEB_PORT = 5199;
 export const HOST_KEY = 'e2e-host-key-0001';
+export const SERVER_URL = `http://localhost:${SERVER_PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,
+  timeout: 90_000,
   fullyParallel: false,
   workers: 1,
   reporter: process.env.CI ? 'list' : 'line',
@@ -26,6 +27,9 @@ export default defineConfig({
         PUBLIC_WEB_ORIGIN: `http://localhost:${WEB_PORT}`,
         EVENT_NAME: 'e2e',
         DATABASE_URL: '',
+        // Short countdown and immediate release so the smoke test can drive within seconds.
+        COUNTDOWN_MS: '2000',
+        RELEASE_AT_MS: '0',
       },
     },
     {

@@ -5,3 +5,4 @@ export * from './scoring';
 export * from './joinCode';
 export * from './rng';
 export * from './protocol';
+export * from './sim';

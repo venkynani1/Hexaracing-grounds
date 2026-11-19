@@ -20,11 +20,13 @@ Acceptance tests:
 Status: all M1 tests pass locally (`npm test` 28 tests, `npm run test:e2e` 2 tests). GitHub Actions workflow added; first CI run still to be observed.
 
 ## M2 — Shared 3D world (single car)
-- [ ] Shared deterministic vehicle model: unit tests for accel/brake/steer, grip change in rain, fuel burn, health damage.
-- [ ] Server runs fixed 20 Hz tick; tick p99 < 2 ms with 1 car + 100 traffic agents (benchmark test).
-- [ ] Client renders test road network, chase camera, touch controls (Playwright smoke: canvas renders, FPS counter > 0, input moves car on server).
-- [ ] Traffic agents follow lanes, stop at red signals (sim unit test).
-- [ ] Manual: 30 FPS on reference mid-range Android phone, Medium preset.
+- [x] Shared deterministic vehicle model: unit tests for accel/brake/steer, grip change in rain, fuel burn, health damage. (`packages/shared/test/sim.test.ts`)
+- [x] Server runs fixed 20 Hz tick; tick p99 < 2 ms with 1 car + 100 traffic agents (benchmark test). (`apps/server/test/world.test.ts`, measured p99 ≈ 0.6 ms in the dev container)
+- [x] Client renders test road network, chase camera, touch controls (Playwright smoke: canvas renders, FPS counter > 0, input moves car on server). (`apps/web/e2e/lobby.spec.ts`)
+- [x] Traffic agents follow lanes, stop at red signals (sim unit test).
+- [ ] Manual: 30 FPS on reference mid-range Android phone, Medium preset. **Not yet measured** — headless CI renders in software (~20 FPS) and is not representative.
+
+Status: automated M2 tests pass locally (`npm test` 50 tests, `npm run test:e2e` 3 tests). First GitHub Actions run still to be observed.
 
 ## M3 — Actual multiplayer (same world, 5 → 10 → 20 → 30)
 - [ ] For each N in {5,10,20,30}: N headless racer bots in **one** `WorldRoom`; assert all share one room id, one tick counter, and that each bot's snapshot contains every other bot within Near range at server-truth positions (±0.5 m).

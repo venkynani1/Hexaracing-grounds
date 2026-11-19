@@ -1,16 +1,37 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ROLES, ROLE_LABEL, type ClockState, type Role, type Roster, type ServerMessage, type SessionResponse } from '@redline/shared';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ROLES,
+  ROLE_LABEL,
+  type ClockState,
+  type NetCar,
+  type Role,
+  type Roster,
+  type ServerMessage,
+  type SessionResponse,
+  type Snapshot,
+  type WorldInfo,
+} from '@redline/shared';
 import { api, HttpError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { clearSession, loadSession, saveSession } from '../lib/session';
 import { useWorldSocket } from '../lib/socket';
 import { Brand, ClockPanel, Qr, useLiveClock } from '../components';
 
+// The 3D client is a separate chunk: lobby phones don't download Babylon until they need it.
+const RacerView = lazy(() => import('../game/RacerView'));
+
 export function Lobby() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [clock, setClock] = useState<ClockState | null>(null);
   const [error, setError] = useState('');
+  const [world, setWorld] = useState<WorldInfo | null>(null);
+  const [telemetry, setTelemetry] = useState<{ car: NetCar; released: boolean } | null>(null);
+  const snapListeners = useRef(new Set<(s: Snapshot) => void>());
+  const subscribe = useCallback((fn: (s: Snapshot) => void) => {
+    snapListeners.current.add(fn);
+    return () => void snapListeners.current.delete(fn);
+  }, []);
 
   // Validate the stored session; fall back to the rejoin credential (same slot, new session).
   useEffect(() => {
@@ -41,13 +62,19 @@ export function Lobby() {
   }, []);
 
   const onMessage = useCallback((m: ServerMessage) => {
+    if (m.t === 'snap') {
+      for (const fn of snapListeners.current) fn(m);
+      return;
+    }
     if (m.t === 'welcome' && m.kind === 'player') {
       setRoster(m.roster);
       setClock(m.clock);
-    } else if (m.t === 'roster') setRoster(m.roster);
+      setWorld(m.world);
+    } else if (m.t === 'car') setTelemetry({ car: m.car, released: m.released });
+    else if (m.t === 'roster') setRoster(m.roster);
     else if (m.t === 'clock') setClock(m.clock);
   }, []);
-  const { status, offset } = useWorldSocket(session ? { t: 'hello', sessionToken: session.sessionToken } : null, onMessage);
+  const { status, offset, send } = useWorldSocket(session ? { t: 'hello', sessionToken: session.sessionToken } : null, onMessage);
   const live = useLiveClock(clock, offset);
 
   const me = roster?.players.find((p) => p.playerId === session?.playerId);
@@ -61,6 +88,15 @@ export function Lobby() {
         <Brand small />
         <p className="muted">{error || 'Loading your squad…'}</p>
       </main>
+    );
+  }
+
+  const inWorld = clock && ['COUNTDOWN', 'LIVE', 'PAUSED', 'FINISHED'].includes(clock.status);
+  if (inWorld && me?.role === 'RACER' && world) {
+    return (
+      <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the world…</p></main>}>
+        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} />
+      </Suspense>
     );
   }
 
@@ -112,9 +148,19 @@ export function Lobby() {
               {me.role === 'RACER' ? ' You will drive the squad car.' : me.role === 'CAPTAIN' ? ' You lead navigation, fuel and combined submissions.' : me.role === 'ENGINEER' ? ' You will crack the coding challenges.' : ' You will bluff and detect bluffs.'}
             </p>
           )}
-          {clock && (clock.status === 'LIVE' || clock.status === 'COUNTDOWN') && (
-            <p className="hint">The 3D world and role consoles arrive in Milestone 2–4. The clock above is the official server clock.</p>
+          {inWorld && telemetry && (
+            <div className="telemetry" data-testid="telemetry">
+              <div className="eyebrow">Squad car — live from the server</div>
+              <div className="tele-grid">
+                <span>Speed <b>{Math.round(Math.hypot(telemetry.car.vx, telemetry.car.vz) * 3.6)} km/h</b></span>
+                <span>Fuel <b>{Math.round(telemetry.car.f)}%</b></span>
+                <span>Health <b>{Math.round(telemetry.car.hp)}%</b></span>
+                <span>Tyres <b>{Math.round(telemetry.car.tr)}%</b></span>
+              </div>
+              {!telemetry.released && <p className="hint">Cars release at 03:00.</p>}
+            </div>
           )}
+          {inWorld && <p className="hint">Your role console (challenges, bluffing, strategy) arrives in Milestone 4.</p>}
         </div>
       </section>
     </main>

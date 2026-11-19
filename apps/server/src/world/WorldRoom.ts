@@ -8,11 +8,22 @@ import {
 
   type ClockState,
   type EventStatus,
+  forwardSpeed,
+  sanitizeInput,
   type HostOverview,
+  type InputMessage,
+  type NetCar,
+  type NetCarLite,
+  type NetTraffic,
   type PhaseId,
+  type Role,
   type Roster,
   type ServerMessage,
+  type WorldStatus,
+  TRAFFIC_TYPES,
 } from '@redline/shared';
+import { performance } from 'node:perf_hooks';
+import { SIM_DT_MS, WorldSim, type SimCar } from './WorldSim';
 import { EventClock, type ClockPersisted } from '../clock/EventClock';
 import { conflict } from '../http/errors';
 import { audit } from '../services/audit';
@@ -24,11 +35,13 @@ export interface WorldRoomOptions {
   clock: EventClock;
   db: DbHandle;
   now?: () => number;
+  sim: WorldSim;
+  releaseAtMs?: number;
 }
 
 export type ClientCtx =
   | { kind: 'pending'; connectedAt: number }
-  | { kind: 'player'; playerId: string; teamId: string }
+  | { kind: 'player'; playerId: string; teamId: string; role: Role }
   | { kind: 'host' };
 
 /**
@@ -69,6 +82,14 @@ export class WorldRoom {
   private readonly bootedAt: number;
   private dbHealthy = true;
   private disposed = false;
+  readonly sim: WorldSim;
+  private readonly releaseAtMs: number;
+  private worldTimer: NodeJS.Timeout | null = null;
+  private lastWorldLoop = 0;
+  private acc = 0;
+  private loopCount = 0;
+  private readonly tickDurations: number[] = [];
+  private readonly stepTimes: number[] = [];
 
   private constructor(opts: WorldRoomOptions) {
     this.eventId = opts.eventId;
@@ -76,6 +97,8 @@ export class WorldRoom {
     this.clock = opts.clock;
     this.dbh = opts.db;
     this.now = opts.now ?? Date.now;
+    this.sim = opts.sim;
+    this.releaseAtMs = opts.releaseAtMs ?? BALANCE.releaseAtMs;
     this.bootedAt = this.now();
     const t = this.now();
     this.lastStatus = this.clock.status(t);
@@ -99,6 +122,154 @@ export class WorldRoom {
     if (this.timer) return;
     this.timer = setInterval(() => void this.tick().catch((e) => console.error('[director]', e)), intervalMs);
     this.timer.unref?.();
+    this.lastWorldLoop = this.now();
+    this.worldTimer = setInterval(() => {
+      try {
+        this.worldLoop();
+      } catch (e) {
+        console.error('[world]', e);
+      }
+    }, SIM_DT_MS);
+    this.worldTimer.unref?.();
+  }
+
+  /* ---------------- World simulation loop (fixed 20 Hz) ---------------- */
+
+  /** Spawn every registered squad's car (registration order). Called at START and on boot of a started event. */
+  async spawnCars() {
+    const teams = await this.registration.listTeams();
+    this.sim.spawn(teams.map((t) => ({ teamId: t.id, name: t.name, vehicle: null })));
+  }
+
+  /**
+   * One wall-clock loop iteration: run as many fixed 50 ms steps as are due (max 3 to avoid spirals),
+   * only while LIVE, then stream snapshots. `forceSteps` lets tests drive the sim deterministically.
+   */
+  worldLoop(forceSteps?: number) {
+    const t = this.now();
+    const status = this.clock.status(t);
+    this.sim.released = status === 'LIVE' && this.clock.elapsedMs(t) >= this.releaseAtMs;
+    let steps = 0;
+    if (forceSteps !== undefined) steps = status === 'LIVE' ? forceSteps : 0;
+    else if (status === 'LIVE') {
+      this.acc += t - this.lastWorldLoop;
+      if (this.acc > 3 * SIM_DT_MS) this.acc = 3 * SIM_DT_MS;
+      steps = Math.floor(this.acc / SIM_DT_MS);
+      this.acc -= steps * SIM_DT_MS;
+    } else this.acc = 0;
+    this.lastWorldLoop = t;
+    for (let i = 0; i < steps; i++) {
+      const t0 = performance.now();
+      this.sim.step();
+      this.recordStep(performance.now() - t0, t);
+    }
+    this.loopCount++;
+    this.broadcastWorld(steps > 0);
+  }
+
+  private recordStep(ms: number, wall: number) {
+    this.tickDurations.push(ms);
+    if (this.tickDurations.length > 400) this.tickDurations.shift();
+    this.stepTimes.push(wall);
+    while (this.stepTimes.length && wall - this.stepTimes[0]! > 2000) this.stepTimes.shift();
+  }
+
+  tickStats() {
+    const sorted = [...this.tickDurations].sort((a, b) => a - b);
+    const p99 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99))]! : 0;
+    return { tickP99Ms: Math.round(p99 * 1000) / 1000, tickHz: this.stepTimes.length / 2 };
+  }
+
+  private netCar(c: SimCar): NetCar {
+    const s = c.state;
+    return { id: c.teamId, n: c.name, x: r2(s.x), z: r2(s.z), h: r4(s.heading), vx: r2(s.vx), vz: r2(s.vz), f: r2(s.fuel), hp: r2(s.health), tr: r2(s.tires), ni: r2(s.nitro), br: c.braking };
+  }
+
+  private liteCar(c: SimCar): NetCarLite {
+    return [c.teamId, c.name, r2(c.state.x), r2(c.state.z), r4(c.state.heading), r2(forwardSpeed(c.state)), c.braking ? 1 : 0];
+  }
+
+  /**
+   * Interest management (M2 baseline; M3 adds tiers + hysteresis): racers get their own car + squad cars
+   * within the mid radius + traffic within the near radius every tick; role clients get their squad car at 5 Hz;
+   * hosts get every car at 2 Hz. Every car stays in the world regardless of who can see it.
+   */
+  private broadcastWorld(stepped: boolean) {
+    if (!this.sim.cars.size) return;
+    const racerTick = stepped || this.loopCount % 4 === 0;
+    const roleTick = this.loopCount % 4 === 0;
+    const hostTick = this.loopCount % 10 === 0;
+    if (!racerTick && !roleTick && !hostTick) return;
+    const serverTime = this.now();
+    const cars = [...this.sim.cars.values()];
+    let traffic: { id: number; type: keyof typeof TRAFFIC_TYPES; x: number; z: number; heading: number }[] | null = null;
+    const nearR2 = BALANCE.nearRadius ** 2;
+    const midR2 = BALANCE.midRadius ** 2;
+    let hostMsg: string | null = null;
+    for (const [ws, ctx] of this.clients) {
+      if (ws.readyState !== ws.OPEN) continue;
+      if (ctx.kind === 'host') {
+        if (!hostTick) continue;
+        hostMsg ??= JSON.stringify({ t: 'cars', tick: this.sim.tick, cars: cars.map((c) => this.liteCar(c)) } satisfies ServerMessage);
+        ws.send(hostMsg);
+        continue;
+      }
+      if (ctx.kind !== 'player') continue;
+      const mine = this.sim.cars.get(ctx.teamId);
+      if (!mine) continue;
+      if (ctx.role === 'RACER') {
+        if (!racerTick) continue;
+        traffic ??= this.sim.traffic.poses();
+        const { x, z } = mine.state;
+        const near: NetTraffic[] = [];
+        for (const p of traffic) if ((p.x - x) ** 2 + (p.z - z) ** 2 <= nearR2) near.push([p.id, TRAFFIC_TYPES[p.type].code, r2(p.x), r2(p.z), r4(p.heading)]);
+        const others: NetCarLite[] = [];
+        for (const c of cars) if (c !== mine && (c.state.x - x) ** 2 + (c.state.z - z) ** 2 <= midR2) others.push(this.liteCar(c));
+        const snap: ServerMessage = {
+          t: 'snap',
+          tick: this.sim.tick,
+          simMs: this.sim.simMs,
+          serverTime,
+          rain: this.sim.rain,
+          released: this.sim.released,
+          ack: mine.ackSeq,
+          me: this.netCar(mine),
+          cars: others,
+          traffic: near,
+        };
+        ws.send(JSON.stringify(snap));
+      } else if (roleTick) {
+        ws.send(JSON.stringify({ t: 'car', tick: this.sim.tick, car: this.netCar(mine), released: this.sim.released } satisfies ServerMessage));
+      }
+    }
+  }
+
+  /** Route a racer's input to its squad car. Only the current RACER of that squad may drive. */
+  handleInput(ws: WebSocket, msg: InputMessage): boolean {
+    const ctx = this.clients.get(ws);
+    if (!ctx || ctx.kind !== 'player' || ctx.role !== 'RACER') return false;
+    return this.sim.pushInput(ctx.teamId, msg.seq, sanitizeInput({ steer: msg.st, throttle: msg.th, brake: msg.br, nitro: msg.ni === true, handbrake: msg.hb === true }));
+  }
+
+  worldStatus(): WorldStatus {
+    return {
+      tick: this.sim.tick,
+      simMs: this.sim.simMs,
+      released: this.sim.released,
+      rain: this.sim.rain,
+      ...this.tickStats(),
+      trafficCount: this.sim.traffic.agents.length,
+      cars: [...this.sim.cars.values()].map((c) => ({
+        teamId: c.teamId,
+        name: c.name,
+        x: r2(c.state.x),
+        z: r2(c.state.z),
+        heading: r4(c.state.heading),
+        speed: r2(forwardSpeed(c.state)),
+        fuel: r2(c.state.fuel),
+        health: r2(c.state.health),
+      })),
+    };
   }
 
   /**
@@ -170,6 +341,7 @@ export class WorldRoom {
     this.clock.lockRegistration();
     await this.persist(this.clock.snapshot(t), 'host:start:lock_registration');
     this.clock.start(t);
+    await this.spawnCars();
     const snap = this.clock.snapshot(t);
     await this.persist(snap, 'host:start:countdown');
     await audit(this.dbh.db, this.eventId, 'host', null, 'event.start', { force: !!opts.force, squads: ov.squadCount });
@@ -213,8 +385,8 @@ export class WorldRoom {
 
   /* ---------------- Connections ---------------- */
 
-  bindPlayer(ws: WebSocket, playerId: string, teamId: string) {
-    this.clients.set(ws, { kind: 'player', playerId, teamId });
+  bindPlayer(ws: WebSocket, playerId: string, teamId: string, role: Role) {
+    this.clients.set(ws, { kind: 'player', playerId, teamId, role });
     const n = (this.connectedPlayers.get(playerId) ?? 0) + 1;
     this.connectedPlayers.set(playerId, n);
     if (n === 1) void this.touchPlayer(playerId, true);
@@ -286,6 +458,13 @@ export class WorldRoom {
   async broadcastRoster(teamId: string) {
     const team = await this.registration.getTeam(teamId);
     if (!team) return;
+    // Keep connection roles current (Captain may reassign roles before START).
+    for (const ctx of this.clients.values()) {
+      if (ctx.kind === 'player' && ctx.teamId === teamId) {
+        const p = team.players.find((x) => x.id === ctx.playerId);
+        if (p) ctx.role = p.role;
+      }
+    }
     const data = JSON.stringify({ t: 'roster', roster: this.toRoster(team) } satisfies ServerMessage);
     for (const [ws, ctx] of this.clients) {
       if (ctx.kind === 'player' && ctx.teamId === teamId && ws.readyState === ws.OPEN) ws.send(data);
@@ -334,13 +513,15 @@ export class WorldRoom {
       maxSquads: BALANCE.maxSquads,
       canStart: blockers.length === 0,
       startBlockers: blockers,
-      health: { db: this.dbHealthy, tickHz: 0, uptimeS: Math.round((this.now() - this.bootedAt) / 1000) },
+      health: { db: this.dbHealthy, ...this.tickStats(), uptimeS: Math.round((this.now() - this.bootedAt) / 1000) },
     };
   }
 
   dispose() {
     this.disposed = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.worldTimer) clearInterval(this.worldTimer);
+    this.worldTimer = null;
     if (this.overviewTimer) clearTimeout(this.overviewTimer);
     this.timer = null;
     for (const ws of this.clients.keys()) ws.terminate();
@@ -350,9 +531,13 @@ export class WorldRoom {
 }
 
 /** Rebuild the clock from the persisted event row. A started, unfinished event comes back PAUSED (DESIGN §2 recovery). */
+const r2 = (v: number) => Math.round(v * 100) / 100;
+const r4 = (v: number) => Math.round(v * 10000) / 10000;
+
 export function clockFromEventRow(
   row: { status: EventStatus; startedAt: Date | null; pausedMs: number; pausedAt: Date | null },
   now: number,
+  countdownMs: number = BALANCE.countdownMs,
 ): { clock: EventClock; autoPaused: boolean } {
   const persisted: ClockPersisted = {
     startedAt: row.startedAt ? row.startedAt.getTime() : null,
@@ -360,7 +545,7 @@ export function clockFromEventRow(
     pausedAt: row.pausedAt ? row.pausedAt.getTime() : null,
     preStartStatus: row.status === 'DRAFT' ? 'DRAFT' : row.startedAt || row.status === 'REGISTRATION_LOCKED' ? 'REGISTRATION_LOCKED' : 'REGISTRATION_OPEN',
   };
-  const clock = new EventClock(persisted);
+  const clock = new EventClock(persisted, countdownMs);
   const s = clock.status(now);
   if (s === 'COUNTDOWN' || s === 'LIVE') {
     // We cannot know how long the server was down while "running"; freeze at the last persisted moment is

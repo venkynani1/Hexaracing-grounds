@@ -122,7 +122,7 @@ describe('one world', () => {
     try {
       expect(WorldRoom.liveRoomsFor(s.eventId)).toBe(1);
       expect(() =>
-        WorldRoom.create({ eventId: s.eventId, eventName: 'dup', clock: new EventClock(), db: s.db }),
+        WorldRoom.create({ eventId: s.eventId, eventName: 'dup', clock: new EventClock(), db: s.db, sim: s.room.sim }),
       ).toThrow(/one world/);
     } finally {
       await s.dispose();
