@@ -49,14 +49,24 @@ docs/             SPEC, DESIGN, MILESTONES, PROGRESS, RUNBOOK
 ## Commands (fill in as they become real)
 ```
 npm install
-npm run dev          # web + server concurrently
-npm test             # all unit/integration tests
-npm run db:generate  # drizzle-kit generate
-npm run db:migrate   # apply migrations to DATABASE_URL
+npm run dev          # server (:2567, embedded PGlite if DATABASE_URL unset) + web (:5173, proxies /api and /ws)
+npm test             # vitest: shared, db (PGlite), server (HTTP inject + real WS)
+npm run test:e2e     # Playwright (boots its own server :2599 + vite :5199)
+npm run typecheck    # tsc for every workspace
+npm run build        # vite build of apps/web
+npm run db:generate -- --name <change>   # drizzle-kit generate (packages/db/migrations)
+npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server also migrates on boot)
 ```
 
 ## Environment variables
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-Milestone 1 not started — repo contains spec, design, milestones and an empty workspace skeleton. Start with M1 in docs/MILESTONES.md.
+Milestone 1 (Foundation) implemented and tested locally — see docs/PROGRESS.md. Next: M2 (shared 3D world, single car) in docs/MILESTONES.md.
+
+## Code map (M1)
+- `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
+- `packages/db/src/schema.ts` — all DESIGN §6 tables; migrations in `packages/db/migrations` (0001 is hand-written: deferrable role uniqueness for atomic swaps).
+- `apps/server/src/world/WorldRoom.ts` — THE single world (one per event, enforced), owns `EventClock`, Director tick, connections, broadcasts.
+- `apps/server/src/services/registration.ts` — squads/join/roles/rejoin/sessions. `apps/server/src/app.ts` — Fastify routes + WS gateway.
+- `apps/web/src/pages` — Home (create/join), Lobby, Host.

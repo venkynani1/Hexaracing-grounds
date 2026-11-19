@@ -1,0 +1,171 @@
+import { useCallback, useState, type FormEvent } from 'react';
+import { ROLE_LABEL, type HostOverview, type ServerMessage } from '@redline/shared';
+import { api, HttpError } from '../lib/api';
+import { useWorldSocket } from '../lib/socket';
+import { Brand, ClockPanel, Qr, useLiveClock } from '../components';
+
+const KEY = 'redline.hostkey';
+
+export function Host() {
+  const [hostKey, setHostKey] = useState<string>(() => sessionStorage.getItem(KEY) ?? '');
+  const [draftKey, setDraftKey] = useState('');
+  const [ov, setOv] = useState<HostOverview | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const onMessage = useCallback((m: ServerMessage) => {
+    if (m.t === 'welcome' && m.kind === 'host') setOv(m.overview);
+    else if (m.t === 'overview') setOv(m.overview);
+    else if (m.t === 'clock') setOv((o) => (o ? { ...o, clock: m.clock } : o));
+    else if (m.t === 'error' && m.error === 'UNAUTHORIZED') {
+      sessionStorage.removeItem(KEY);
+      setHostKey('');
+      setError('Invalid host key');
+    }
+  }, []);
+  const { status, offset } = useWorldSocket(hostKey ? { t: 'host_hello', hostKey } : null, onMessage);
+  const live = useLiveClock(ov?.clock ?? null, offset);
+
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+      setOv(await api.host.overview(hostKey));
+    } catch (e) {
+      setError(e instanceof HttpError ? e.message : 'Request failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!hostKey) {
+    const submit = (e: FormEvent) => {
+      e.preventDefault();
+      sessionStorage.setItem(KEY, draftKey);
+      setHostKey(draftKey);
+    };
+    return (
+      <main className="page narrow">
+        <Brand />
+        <form className="card" onSubmit={submit}>
+          <label>
+            Host key
+            <input type="password" value={draftKey} onChange={(e) => setDraftKey(e.target.value)} required data-testid="host-key" />
+          </label>
+          {error && <div className="error">{error}</div>}
+          <button className="btn primary wide" data-testid="host-login">Open control center</button>
+        </form>
+      </main>
+    );
+  }
+
+  const st = ov?.clock.status;
+  const registrationUrl = `${location.origin}/`;
+  return (
+    <main className="page wide">
+      <header className="topbar">
+        <Brand small />
+        <span className="eyebrow">Host control center</span>
+        <span className={`conn conn-${status}`}>{status === 'open' ? 'Live link' : 'Reconnecting…'}</span>
+      </header>
+      {!ov ? (
+        <p className="muted">Connecting to the world server…</p>
+      ) : (
+        <section className="host-grid">
+          <div className="card center">
+            <ClockPanel clock={live} />
+            <div className="controls">
+              {st === 'REGISTRATION_OPEN' && (
+                <>
+                  <button className="btn primary start" disabled={busy || !ov.canStart} onClick={() => act(() => api.host.start(hostKey))} data-testid="start">
+                    START
+                  </button>
+                  {!ov.canStart && ov.squadCount > 0 && (
+                    <button
+                      className="btn ghost"
+                      disabled={busy}
+                      onClick={() => confirm('Start with incomplete squads? This is audit-logged.') && act(() => api.host.start(hostKey, true))}
+                    >
+                      Force start
+                    </button>
+                  )}
+                </>
+              )}
+              {(st === 'LIVE' || st === 'COUNTDOWN') && (
+                <button className="btn" disabled={busy} onClick={() => act(() => api.host.pause(hostKey))} data-testid="pause">
+                  Emergency pause
+                </button>
+              )}
+              {st === 'PAUSED' && (
+                <button className="btn primary" disabled={busy} onClick={() => act(() => api.host.resume(hostKey))} data-testid="resume">
+                  Resume
+                </button>
+              )}
+            </div>
+            {ov.startBlockers.length > 0 && st === 'REGISTRATION_OPEN' && (
+              <ul className="blockers" data-testid="blockers">
+                {ov.startBlockers.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            )}
+            {error && <div className="error">{error}</div>}
+          </div>
+          <div className="card stats">
+            <Stat label="Squads" value={`${ov.squadCount}/${ov.maxSquads}`} testid="stat-squads" />
+            <Stat label="Players" value={`${ov.playerCount}/${ov.maxSquads * 4}`} testid="stat-players" />
+            <Stat label="Connected" value={String(ov.connectedCount)} />
+            <Stat label="Database" value={ov.health.db ? 'OK' : 'DOWN'} />
+            <Stat label="Uptime" value={`${Math.floor(ov.health.uptimeS / 60)}m`} />
+            <Stat label="World" value="1 room" />
+          </div>
+          <div className="card center">
+            <Qr value={registrationUrl} size={200} label="Scan to register" />
+            <p className="hint">{registrationUrl}</p>
+          </div>
+          <div className="card squads">
+            <h2>Squads</h2>
+            {ov.squads.length === 0 && <p className="muted">No squads yet.</p>}
+            <table data-testid="squad-table">
+              <thead>
+                <tr>
+                  <th>Squad</th>
+                  <th>Code</th>
+                  <th>Roster</th>
+                  <th>Ready</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ov.squads.map((s) => (
+                  <tr key={s.teamId} data-testid="squad-row">
+                    <td>{s.name}</td>
+                    <td className="mono">{s.joinCode}</td>
+                    <td>
+                      {s.players.map((p) => (
+                        <span key={p.playerId} className="mini-player" title={ROLE_LABEL[p.role]}>
+                          <span className={`dot ${p.connected ? 'on' : ''}`} />
+                          {p.displayName} <small>{ROLE_LABEL[p.role].slice(0, 2)}</small>
+                        </span>
+                      ))}
+                    </td>
+                    <td>{s.ready ? '✓' : `${s.players.length}/4`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
+function Stat({ label, value, testid }: { label: string; value: string; testid?: string }) {
+  return (
+    <div className="stat">
+      <div className="stat-v" data-testid={testid}>{value}</div>
+      <div className="stat-l">{label}</div>
+    </div>
+  );
+}

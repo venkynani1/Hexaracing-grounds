@@ -3,10 +3,23 @@
   "private": true,
   "version": "0.0.0",
   "description": "CODE REDLINE: ROAD TO HEXAWARE — single-world multiplayer racing event",
-  "workspaces": ["apps/*", "packages/*", "tools/*"],
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "dev": "echo \"M1: wire up web + server dev scripts\"",
-    "test": "echo \"M1: add vitest\""
+    "dev": "concurrently -k -n server,web -c red,cyan \"npm run dev -w @redline/server\" \"npm run dev -w @redline/web\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run test:e2e -w @redline/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @redline/web",
+    "db:generate": "npm run db:generate -w @redline/db --",
+    "db:migrate": "npm run db:migrate -w @redline/db"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "5.9.3",
+    "vitest": "^5.1.1",
+    "@types/node": "^22.19.0"
   }
 }

@@ -6,16 +6,18 @@ A milestone is **done** only when every test listed for it is automated, committ
 Scope: monorepo, Drizzle schema + migrations, registration (create squad / join by 6-char code), names + role selection, 4-player lobby, QR join, host dashboard (pre-START), server-authoritative event clock, signed sessions.
 
 Acceptance tests:
-- [ ] `db`: migrations apply cleanly to an empty Postgres (PGlite in CI, Neon in staging).
-- [ ] `api`: creating a squad returns a 6-char code from the safe alphabet; creator is Captain (slot 4).
-- [ ] `api`: 3 more players join; a 5th join is rejected; duplicate role rejected; unknown code rejected.
-- [ ] `api`: role swap allowed before START only with Captain authorisation; rejected after START.
-- [ ] `api`: 30 squads × 4 players = 120 registrations succeed; 31st squad rejected (capacity).
-- [ ] `auth`: rejoin token restores the same slot on a new connection; tampered token rejected; host endpoints reject missing/invalid host key.
-- [ ] `clock`: START transitions REGISTRATION_LOCKED → COUNTDOWN → LIVE; pause/resume preserves elapsed time exactly (fake timers); phase at given elapsed ms matches the timeline table.
-- [ ] `ws`: a lobby client receives roster updates when a teammate joins (real WS in test).
-- [ ] `rate-limit`: >N join attempts per minute per IP returns 429.
-- [ ] `web` (Playwright): scan URL → create squad → 3 browser contexts join → all four see the full lobby; host page shows the squad and enables START when ready.
+- [x] `db`: migrations apply cleanly to an empty Postgres (PGlite in CI, Neon in staging). *PGlite ✅; Neon staging not yet run.*
+- [x] `api`: creating a squad returns a 6-char code from the safe alphabet; creator is Captain (slot 4).
+- [x] `api`: 3 more players join; a 5th join is rejected; duplicate role rejected; unknown code rejected.
+- [x] `api`: role swap allowed before START only with Captain authorisation; rejected after START.
+- [x] `api`: 30 squads × 4 players = 120 registrations succeed; 31st squad rejected (capacity).
+- [x] `auth`: rejoin token restores the same slot on a new connection; tampered token rejected; host endpoints reject missing/invalid host key.
+- [x] `clock`: START transitions REGISTRATION_LOCKED → COUNTDOWN → LIVE; pause/resume preserves elapsed time exactly (fake timers); phase at given elapsed ms matches the timeline table.
+- [x] `ws`: a lobby client receives roster updates when a teammate joins (real WS in test).
+- [x] `rate-limit`: >N join attempts per minute per IP returns 429.
+- [x] `web` (Playwright): scan URL → create squad → 3 browser contexts join → all four see the full lobby; host page shows the squad and enables START when ready.
+
+Status: all M1 tests pass locally (`npm test` 28 tests, `npm run test:e2e` 2 tests). GitHub Actions workflow added; first CI run still to be observed.
 
 ## M2 — Shared 3D world (single car)
 - [ ] Shared deterministic vehicle model: unit tests for accel/brake/steer, grip change in rain, fuel burn, health damage.
