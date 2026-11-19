@@ -1,5 +1,6 @@
-import { useCallback, useState, type FormEvent } from 'react';
-import { ROLE_LABEL, type HostOverview, type ServerMessage } from '@redline/shared';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { ROLE_LABEL, createTestNetwork, type HostOverview, type MapMessage, type ServerMessage } from '@redline/shared';
+import { drawMap } from '../game/minimap';
 import { api, HttpError } from '../lib/api';
 import { useWorldSocket } from '../lib/socket';
 import { Brand, ClockPanel, Qr, useLiveClock } from '../components';
@@ -12,11 +13,13 @@ export function Host() {
   const [ov, setOv] = useState<HostOverview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [map, setMap] = useState<MapMessage | null>(null);
 
   const onMessage = useCallback((m: ServerMessage) => {
     if (m.t === 'welcome' && m.kind === 'host') setOv(m.overview);
     else if (m.t === 'overview') setOv(m.overview);
     else if (m.t === 'clock') setOv((o) => (o ? { ...o, clock: m.clock } : o));
+    else if (m.t === 'map') setMap(m);
     else if (m.t === 'error' && m.error === 'UNAUTHORIZED') {
       sessionStorage.removeItem(KEY);
       setHostKey('');
@@ -124,6 +127,7 @@ export function Host() {
             <Qr value={registrationUrl} size={200} label="Scan to register" />
             <p className="hint">{registrationUrl}</p>
           </div>
+          {map && <LiveMap map={map} />}
           <div className="card squads">
             <h2>Squads</h2>
             {ov.squads.length === 0 && <p className="muted">No squads yet.</p>}
@@ -158,6 +162,29 @@ export function Host() {
         </section>
       )}
     </main>
+  );
+}
+
+/** Live map of the ONE world: actual server positions of every squad car (no fabricated positions). */
+function LiveMap({ map }: { map: MapMessage }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const net = useMemo(() => createTestNetwork(), []);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    drawMap(
+      ctx,
+      net,
+      map.cars.map(([cid, , name, x, z, heading]) => ({ id: cid, x, z, heading, label: name })),
+      { labels: true, dpr: 2 },
+    );
+  }, [map, net]);
+  return (
+    <div className="card center map-card">
+      <div className="eyebrow">Live world · {map.cars.length} squad cars · tick {map.tick}</div>
+      <canvas ref={ref} className="host-map" width={1200} height={1200} data-testid="host-map" />
+    </div>
   );
 }
 

@@ -1,19 +1,7 @@
-import {
-  NEUTRAL_INPUT,
-  VEHICLES,
-  applyImpact,
-  driveEnv,
-  isOnRoad,
-  resolveStatic,
-  stepVehicle,
-  wrapAngle,
-  type Building,
-  type NetCar,
-  type RoadNetwork,
-  type Snapshot,
-  type VehicleInput,
-  type VehicleState,
-} from '@redline/shared';
+import type { VehicleCode } from '../enums';
+import type { InputMessage, InputTuple, NetCar, Snapshot } from '../protocol';
+import { applyImpact, driveEnv, NEUTRAL_INPUT, stepVehicle, VEHICLES, wrapAngle, type VehicleInput, type VehicleState } from '../sim/vehicle';
+import { isOnRoad, resolveStatic, type Building, type RoadNetwork } from '../sim/road';
 
 const DT = 0.05;
 
@@ -35,7 +23,9 @@ export class Predictor {
   errH = 0;
   lastCorrection = 0;
   braking = false;
-  private readonly params = VEHICLES.vortex_gt;
+  private params = VEHICLES.vortex_gt;
+  /** Recent inputs, repeated in each message for loss tolerance. */
+  private history: InputTuple[] = [];
 
   constructor(
     private readonly net: RoadNetwork,
@@ -49,7 +39,17 @@ export class Predictor {
     return hit.impact > 0 ? applyImpact(hit.state, hit.impact, this.params) : hit.state;
   }
 
-  /** Advance one fixed step with a fresh input; returns the seq to send. */
+  /** Advance one fixed step with a fresh input; returns the message to send (with redundancy). */
+  stepMessage(input: VehicleInput, redundancy = 3): InputMessage {
+    const seq = this.step(input);
+    const msg: InputMessage = { t: 'input', seq, st: input.steer, th: input.throttle, br: input.brake, ni: input.nitro, hb: input.handbrake };
+    if (redundancy > 0 && this.history.length) msg.r = this.history.slice(-redundancy);
+    this.history.push([seq, input.steer, input.throttle, input.brake, (input.nitro ? 1 : 0) | (input.handbrake ? 2 : 0)]);
+    if (this.history.length > 8) this.history.shift();
+    return msg;
+  }
+
+  /** Advance one fixed step with a fresh input; returns the seq. */
   step(input: VehicleInput): number {
     const seq = ++this.seq;
     this.braking = input.brake > 0.1;
@@ -65,6 +65,8 @@ export class Predictor {
     this.released = snap.released;
     this.rain = snap.rain;
     if (!snap.me) return;
+    const vc = snap.me.vc as VehicleCode;
+    if (VEHICLES[vc] && VEHICLES[vc] !== this.params) this.params = VEHICLES[vc];
     const auth = fromNet(snap.me);
     if (!this.state) {
       this.state = auth;
@@ -124,6 +126,12 @@ export class Interpolator<T extends RemotePose & { id: string | number }> {
   push(serverTime: number, items: T[]) {
     this.frames.push({ t: serverTime, items: new Map(items.map((i) => [i.id, i])) });
     while (this.frames.length > 30) this.frames.shift();
+  }
+
+  /** Latest raw frame (no interpolation). */
+  latest(): T[] {
+    const f = this.frames[this.frames.length - 1];
+    return f ? [...f.items.values()] : [];
   }
 
   sample(serverNow: number): T[] {

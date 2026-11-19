@@ -29,12 +29,14 @@ Status: all M1 tests pass locally (`npm test` 28 tests, `npm run test:e2e` 2 tes
 Status: automated M2 tests pass locally (`npm test` 50 tests, `npm run test:e2e` 3 tests). First GitHub Actions run still to be observed.
 
 ## M3 — Actual multiplayer (same world, 5 → 10 → 20 → 30)
-- [ ] For each N in {5,10,20,30}: N headless racer bots in **one** `WorldRoom`; assert all share one room id, one tick counter, and that each bot's snapshot contains every other bot within Near range at server-truth positions (±0.5 m).
-- [ ] Two bots driving onto the same edge see each other; overtake changes order consistently on both clients.
-- [ ] Collision: two cars collide → both receive identical server-resolved impulses; damage capped; anti-ramming ghost-out triggers on repeated hits.
-- [ ] Prediction/reconciliation: with 150 ms simulated latency and 2% loss, own-car correction error < 1 m p95.
-- [ ] Interest tiers: far cars arrive at ≤ 1 Hz, near at 20 Hz; no squad ever missing from the global map channel.
-- [ ] Static check: codebase contains no code path creating a second `WorldRoom` per event (test asserts singleton).
+- [x] For each N in {5,10,20,30}: N headless racer bots in **one** `WorldRoom`; assert all share one room id, one tick counter, and that each bot's snapshot contains every other bot within Near range at server-truth positions (±0.5 m).
+- [x] Two bots driving onto the same edge see each other; overtake changes order consistently on both clients.
+- [x] Collision: two cars collide → both receive identical server-resolved impulses; damage capped; anti-ramming ghost-out triggers on repeated hits.
+- [x] Prediction/reconciliation: with 150 ms simulated latency and 2% loss, own-car correction error < 1 m p95. (Measured: p95 ≈ 0.01 m with 150 ms one-way + 0–30 ms jitter, 2% loss each way.)
+- [x] Interest tiers: far cars arrive at ≤ 1 Hz, near at 20 Hz; no squad ever missing from the global map channel. (Plus 10% hysteresis test.)
+- [x] Static check: codebase contains no code path creating a second `WorldRoom` per event (test asserts singleton).
+
+Status: all in `apps/server/test/multiplayer.test.ts`, passing locally. Real-time run (29 bots + 1 browser racer, 45 s, localhost): 1 room, 0 disconnects, 31.5 KB/s avg downstream per racer, 19.4 snapshots/s, server tick 20 Hz p99 1.74 ms. First GitHub Actions run still to be observed.
 
 ## M4 — Four-player squad mechanics
 - [ ] Engineer challenge: correct answer → scoring event + vehicle buff applied to the real squad car on server.

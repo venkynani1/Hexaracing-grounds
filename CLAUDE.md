@@ -62,7 +62,7 @@ npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1 (Foundation) and M2 (shared 3D world, single car) implemented and tested locally; M2's manual phone-FPS check is still open — see docs/PROGRESS.md. Next: M3 (5 → 10 → 20 → 30 real cars in the same world).
+M1–M3 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M4 (four-player squad mechanics: Engineer, Deceiver, Captain consoles wired to the real car).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -79,3 +79,10 @@ M1 (Foundation) and M2 (shared 3D world, single car) implemented and tested loca
 - `apps/server/src/world/WorldRoom.ts` — 20 Hz loop, spawn at START, release at 03:00, interest-filtered snapshots, `/api/host/world`.
 - `apps/web/src/game/` — Babylon scene, prediction/reconciliation + interpolation, input (keyboard + touch), RacerView HUD. Lazy-loaded chunk.
 - Test/dev knobs (env): `COUNTDOWN_MS`, `RELEASE_AT_MS`, `TRAFFIC_AGENTS`.
+
+## Code map (M3)
+- `packages/shared/src/net/prediction.ts` — `Predictor` (prediction, reconciliation, redundant inputs) and `Interpolator`; used by the browser AND the bots.
+- Server input rules (`WorldSim.step`): every input applied exactly once in seq order; hold ≤ 3 ticks for jitter, then extrapolate, > 1 s AI-brake; catch-up ≤ 2 inputs/tick; input budget (+1/tick, cap 10) blocks speed hacks.
+- Anti-ramming: `RAMMING` in WorldSim (≥ 3 dominant hits ≥ 5 m/s on the same squad in 10 s → 5 s ghost-out, penalty + audit `driving.ghost_out`, victim free reset). Stuck: reset offered at 3 s, auto at 6 s.
+- Interest (`WorldRoom.broadcastWorld`): near ≤ 300 m every tick, mid ≤ 1200 m every 4th, far only on the `map` channel (players 1 Hz, host 5 Hz); 10% hysteresis. Car tuples use compact `cid`; names come from the map channel.
+- `tools/loadtest` — `Bot` (real protocol) + CLI: `npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-key <key> --start` (raise `JOIN_RATE_LIMIT` on the server first).

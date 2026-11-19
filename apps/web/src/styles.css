@@ -135,3 +135,8 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .chip.nocap { text-transform: none; }
 /* Portrait phones: lift the speedometer above the pads so nothing overlaps. */
 @media (orientation: portrait) { .hud-speed { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 124px); } }
+.minimap { position: absolute; right: 12px; top: calc(max(10px, env(safe-area-inset-top)) + 120px); width: 120px; height: 120px; border-radius: 12px; border: 1px solid var(--line); pointer-events: none; }
+@media (min-width: 900px) { .minimap { width: 200px; height: 200px; } }
+.reset-btn { position: absolute; top: 46%; left: 50%; transform: translateX(-50%); }
+.host-map { width: 100%; max-width: 640px; aspect-ratio: 1; border-radius: 12px; border: 1px solid var(--line); background: #0b0d12; }
+.host-grid .map-card { grid-column: 1 / -1; }

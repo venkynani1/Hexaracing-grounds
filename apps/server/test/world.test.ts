@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { performance } from 'node:perf_hooks';
 import { NEUTRAL_INPUT, SPAWN_DE, deHeading, type ServerMessage } from '@redline/shared';
-import { WorldSim } from '../src/world/WorldSim';
+import { INPUT_BUDGET_MAX, WorldSim } from '../src/world/WorldSim';
 import { HOST_KEY, connectWs, get, makeServer, post, until } from './helpers';
 
 describe('world sim', () => {
@@ -92,23 +92,27 @@ describe('world room: input → server-authoritative car', () => {
       expect(s.room.clockState().status).toBe('LIVE');
 
       const start = { x: car.state.x, z: car.state.z };
-      for (let seq = 1; seq <= 30; seq++) {
-        r.send({ t: 'input', seq, st: 0, th: 1, br: 0 });
-      }
-      await until(() => car.lastSeq === 30);
-      // The queue is capped (4): a burst never lets the server apply more than one input per tick.
-      expect(car.queue.length).toBe(4);
+      // Burst: the input budget (anti speed-hack) accepts at most INPUT_BUDGET_MAX unconsumed inputs.
+      for (let seq = 1; seq <= 30; seq++) r.send({ t: 'input', seq, st: 0, th: 1, br: 0 });
+      await until(() => car.lastSeq === INPUT_BUDGET_MAX);
+      await new Promise((res) => setTimeout(res, 50));
+      expect(car.lastSeq).toBe(INPUT_BUDGET_MAX);
+      expect(car.queue.length).toBeLessThanOrEqual(6);
       await new Promise((res) => setTimeout(res, 1100)); // stay under the 60 msg/s connection ceiling
-      for (let i = 0; i < 50; i++) {
-        r.send({ t: 'input', seq: 31 + i, st: 0, th: 1, br: 0 });
-        await until(() => car.lastSeq === 31 + i);
+      for (let i = 0; i < 10; i++) s.room.worldLoop(1); // consume the backlog; budget refills one per tick
+      expect(car.queue.length).toBe(0);
+      expect(car.ackSeq).toBe(INPUT_BUDGET_MAX);
+      let seq = 30;
+      for (let i = 0; i < 40; i++) {
+        r.send({ t: 'input', seq: ++seq, st: 0, th: 1, br: 0 });
+        await until(() => car.lastSeq === seq);
         s.room.worldLoop(1);
         if (i === 25) await new Promise((res) => setTimeout(res, 1100));
       }
-      for (let i = 0; i < 4; i++) s.room.worldLoop(1); // drain the 4 queued inputs
+      for (let i = 0; i < 6; i++) s.room.worldLoop(1); // drain the queue
       const moved = Math.hypot(car.state.x - start.x, car.state.z - start.z);
       expect(moved).toBeGreaterThan(10);
-      const snap = (await r.next((m) => m.t === 'snap' && m.ack === 80)) as Extract<ServerMessage, { t: 'snap' }>;
+      const snap = (await r.next((m) => m.t === 'snap' && m.ack === 70)) as Extract<ServerMessage, { t: 'snap' }>;
       expect(snap.me!.id).toBe(cap.body.teamId);
       expect(snap.released).toBe(true);
       expect(snap.traffic.length).toBeGreaterThan(0);
@@ -119,7 +123,7 @@ describe('world room: input → server-authoritative car', () => {
       // Captain is not the racer: inputs ignored.
       c.send({ t: 'input', seq: 1000, st: 1, th: 0, br: 1 });
       await new Promise((res) => setTimeout(res, 50));
-      expect(car.lastSeq).toBe(80);
+      expect(car.lastSeq).toBe(70);
 
       // Role clients get the squad car telemetry.
       for (let i = 0; i < 4; i++) s.room.worldLoop(0);

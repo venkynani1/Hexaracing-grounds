@@ -184,6 +184,10 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
           room.handleInput(ws, msg);
           return;
         }
+        if (msg.t === 'reset') {
+          room.handleReset(ws);
+          return;
+        }
         if (ctx?.kind !== 'pending') return;
         if (msg.t === 'hello') {
           const s = await registration.authenticate(msg.sessionToken);

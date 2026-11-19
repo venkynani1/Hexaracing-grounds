@@ -2,6 +2,35 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-19 — Milestone 3: Actual multiplayer (5 → 10 → 20 → 30 in one world)
+
+### What runs
+- **Headless bots** (`tools/loadtest`): register through the public HTTP API, connect over the real WebSocket, run the same shared `Predictor` as the browser. CLI for real-time load runs with bandwidth/tick/correction report.
+- **Exactly-once input processing** on the server: inputs applied once each in seq order, jitter hold (≤ 150 ms), catch-up ≤ 2/tick, extrapolation then AI brake on connection loss; input budget blocks speed hacks; clients send the last 3 inputs redundantly so a lost packet doesn't lose a step.
+- **Interest management**: near (≤ 300 m, 20 Hz), mid (≤ 1200 m, 5 Hz), far (global map channel only, 1 Hz for players / 5 Hz for host), 10% hysteresis; compact numeric car ids. Every squad is always on the map channel.
+- **Collisions & fairness**: symmetric equal-and-opposite impulses (recorded per contact), damage capped per hit, anti-ramming ghost-out with penalty + audit log and a free reset for the victim, stuck detection with offered (3 s) and automatic (6 s) safe reset to the nearest lane.
+- **Client**: squad name labels above other cars, translucent ghosted cars + disclosure banner, safe-reset button, minimap (all squads from the map channel, near cars live), host dashboard live map of all squad cars (real server positions only).
+
+### Tested
+- `npm test`: 62 tests. New M3 suite (`apps/server/test/multiplayer.test.ts`):
+  - N = 5, 10, 20, 30 bots in one room: same room id, same tick numbers, every near car present in every snapshot at server-truth positions (±0.5 m), cars actually moving.
+  - Overtake: both clients see each other every tick and agree on the order every tick; order flips A → B.
+  - Collisions: equal and opposite Δv, capped and equal damage; ramming → ghost-out, penalty, free reset, no contact while ghosted, expiry after 5 s; head-on mutual contact → no penalty; stuck → reset offered at 3 s, auto at 6 s, back on the road.
+  - Latency: 150 ms one-way + 0–30 ms jitter, 2% loss both ways, 120 s, 100 traffic agents → correction p50 0.004 m, p95 0.010 m (max 19.7 m = one snap after an unpredicted traffic hit).
+  - Interest tiers: near 40/40 ticks, mid 10/40, far 0 in snapshots but present in every map message (player and host); hysteresis at 320/340/310/290 m.
+  - Static check: exactly one `WorldRoom.create` call site, one `new WorldSim`.
+- `npm run test:e2e`: 3 tests; the M2 smoke now also checks the minimap and the host live map.
+- **Real-time run** (localhost, 29 bots + a Playwright browser racer, 45 s): 1 room, 0 disconnects, downstream avg 31.5 KB/s (max 35.1) per racer with all cars bunched near the start, 19.4 snaps/s, server 20 Hz with tick p99 1.74 ms (30 cars + 100 traffic + snapshot building). Correction p95 0.013 m (localhost latency only).
+
+### Known limitations / open risks
+- Bandwidth is near the 40 KB/s budget when all 30 cars are bunched (start grid / convoy). JSON for now; binary/delta encoding (DESIGN §4) is the planned fix before M8.
+- Traffic collisions aren't predicted on the client: a hit causes one visible snap (rare, seen as the max correction).
+- Ghost-out penalty is recorded (`penalties`, audit log) but not yet converted into a scoring event — that happens with scoring in M7 (clean-driving component of Driving).
+- Real-network test (phones on Wi-Fi) is still M8.
+
+### Next (M4)
+- Engineer coding/debug challenges with buffs applied to the real car, Deceiver bluffing rounds (one entry per team, no self-vote, one vote per player), Captain navigation/power-ups/four-key combined submission, private clue isolation test, four-context Playwright test.
+
 ## 2026-11-19 — Milestone 2: Shared 3D world (single car)
 
 ### What runs

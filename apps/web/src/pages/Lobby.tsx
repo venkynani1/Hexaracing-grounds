@@ -8,9 +8,9 @@ import {
   type Roster,
   type ServerMessage,
   type SessionResponse,
-  type Snapshot,
   type WorldInfo,
 } from '@redline/shared';
+import type { WorldFeed } from '../game/RacerView';
 import { api, HttpError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { clearSession, loadSession, saveSession } from '../lib/session';
@@ -27,8 +27,8 @@ export function Lobby() {
   const [error, setError] = useState('');
   const [world, setWorld] = useState<WorldInfo | null>(null);
   const [telemetry, setTelemetry] = useState<{ car: NetCar; released: boolean } | null>(null);
-  const snapListeners = useRef(new Set<(s: Snapshot) => void>());
-  const subscribe = useCallback((fn: (s: Snapshot) => void) => {
+  const snapListeners = useRef(new Set<(s: WorldFeed) => void>());
+  const subscribe = useCallback((fn: (s: WorldFeed) => void) => {
     snapListeners.current.add(fn);
     return () => void snapListeners.current.delete(fn);
   }, []);
@@ -62,7 +62,7 @@ export function Lobby() {
   }, []);
 
   const onMessage = useCallback((m: ServerMessage) => {
-    if (m.t === 'snap') {
+    if (m.t === 'snap' || m.t === 'map') {
       for (const fn of snapListeners.current) fn(m);
       return;
     }

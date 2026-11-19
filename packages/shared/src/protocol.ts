@@ -82,7 +82,13 @@ export interface ApiError {
 
 /* ---------------- WebSocket messages (JSON, low-rate) ---------------- */
 
-/** Racer input for one 50 ms simulation step. seq must strictly increase (replays are dropped). */
+/** [seq, steer, throttle, brake, flags(bit0 nitro, bit1 handbrake)] */
+export type InputTuple = [number, number, number, number, number];
+
+/**
+ * Racer input for one 50 ms simulation step. seq must strictly increase (replays are dropped).
+ * `r` repeats the previous few inputs so a single lost packet doesn't lose a step (DESIGN §4).
+ */
 export interface InputMessage {
   t: 'input';
   seq: number;
@@ -91,18 +97,23 @@ export interface InputMessage {
   br: number;
   ni?: boolean;
   hb?: boolean;
+  r?: InputTuple[];
 }
 
 export type ClientMessage =
   | { t: 'hello'; sessionToken: string }
   | { t: 'host_hello'; hostKey: string }
   | { t: 'ping'; clientTime: number }
+  | { t: 'reset' }
   | InputMessage;
 
 /** Full state of a squad car (own car / role telemetry). Positions rounded to 1 cm. */
 export interface NetCar {
+  /** Compact car id (1..30), stable for the event. */
+  cid: number;
   id: string;
   n: string;
+  vc: string;
   x: number;
   z: number;
   h: number;
@@ -114,9 +125,18 @@ export interface NetCar {
   ni: number;
   /** braking (for brake lights) */
   br: boolean;
+  /** ghosted (anti-ramming): visible, non-collidable */
+  g: boolean;
+  /** a safe reset is available (stuck, or victim of ramming) */
+  rs: boolean;
 }
-/** [teamId, squadName, x, z, heading, speed, braking 0|1] */
-export type NetCarLite = [string, string, number, number, number, number, number];
+
+export const CAR_FLAG_BRAKING = 1;
+export const CAR_FLAG_GHOST = 2;
+/** Near/mid tier entry: [cid, x, z, heading, speed, flags] — names come from the map channel. */
+export type NetCarLite = [number, number, number, number, number, number];
+/** Global map channel entry (every squad, always): [cid, teamId, squadName, x, z, heading] */
+export type MapCar = [number, string, string, number, number, number];
 /** [id, typeCode, x, z, heading] */
 export type NetTraffic = [number, number, number, number, number];
 
@@ -130,8 +150,16 @@ export interface Snapshot {
   /** Last input seq applied to `me` (for client reconciliation). */
   ack: number;
   me: NetCar | null;
+  /** Near tier every tick, mid tier every 4th tick (DESIGN §5). */
   cars: NetCarLite[];
   traffic: NetTraffic[];
+}
+
+export interface MapMessage {
+  t: 'map';
+  tick: number;
+  serverTime: number;
+  cars: MapCar[];
 }
 
 export interface WorldInfo {
@@ -147,7 +175,8 @@ export interface WorldStatus {
   tickHz: number;
   tickP99Ms: number;
   trafficCount: number;
-  cars: { teamId: string; name: string; x: number; z: number; heading: number; speed: number; fuel: number; health: number }[];
+  cars: { cid: number; teamId: string; name: string; x: number; z: number; heading: number; speed: number; fuel: number; health: number; ghost: boolean }[];
+  penalties: { teamId: string; victimTeamId: string; tick: number; reason: string }[];
 }
 
 export type ServerMessage =
@@ -159,5 +188,5 @@ export type ServerMessage =
   | { t: 'pong'; clientTime: number; serverTime: number }
   | Snapshot
   | { t: 'car'; tick: number; car: NetCar; released: boolean }
-  | { t: 'cars'; tick: number; cars: NetCarLite[] }
+  | MapMessage
   | { t: 'error'; error: string; message: string };

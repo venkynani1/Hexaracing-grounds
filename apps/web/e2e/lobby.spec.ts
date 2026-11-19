@@ -87,8 +87,16 @@ test('M2: racer view renders the world, FPS > 0, touch input moves the car on th
   const moved = Math.hypot(after.x - before.x, after.z - before.z);
   expect(moved).toBeGreaterThan(5);
   await expect.poll(async () => Number(await p.getByTestId('hud-speed').getAttribute('data-speed'))).toBeGreaterThanOrEqual(0);
-  // Non-racer roles get live squad-car telemetry from the same world.
+  await expect(p.getByTestId('minimap')).toBeVisible();
   await p.screenshot({ path: 'test-results/racer-view.png' });
+
+  // Host dashboard shows the live map of the one world with the real squad car on it.
+  const host = await (await p.context().browser()!.newContext()).newPage();
+  await host.goto('/host');
+  await host.getByTestId('host-key').fill(HOST_KEY);
+  await host.getByTestId('host-login').click();
+  await expect(host.getByTestId('host-map')).toBeVisible({ timeout: 10_000 });
+  await expect(host.getByText(/1 squad cars/)).toBeVisible();
 });
 
 test('registration is closed for new squads after START', async ({ browser }) => {

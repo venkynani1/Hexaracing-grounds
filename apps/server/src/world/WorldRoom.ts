@@ -12,6 +12,7 @@ import {
   sanitizeInput,
   type HostOverview,
   type InputMessage,
+  type MapCar,
   type NetCar,
   type NetCarLite,
   type NetTraffic,
@@ -21,6 +22,8 @@ import {
   type ServerMessage,
   type WorldStatus,
   TRAFFIC_TYPES,
+  CAR_FLAG_BRAKING,
+  CAR_FLAG_GHOST,
 } from '@redline/shared';
 import { performance } from 'node:perf_hooks';
 import { SIM_DT_MS, WorldSim, type SimCar } from './WorldSim';
@@ -38,6 +41,9 @@ export interface WorldRoomOptions {
   sim: WorldSim;
   releaseAtMs?: number;
 }
+
+export type Tier = 'near' | 'mid' | 'far';
+export const INTEREST = { hysteresis: 0.1, midEvery: 4 } as const;
 
 export type ClientCtx =
   | { kind: 'pending'; connectedAt: number }
@@ -90,6 +96,10 @@ export class WorldRoom {
   private loopCount = 0;
   private readonly tickDurations: number[] = [];
   private readonly stepTimes: number[] = [];
+  /** Per-subscriber tier memory for hysteresis. */
+  private readonly tiers = new WeakMap<WebSocket, Map<number, Tier>>();
+  /** Total payload bytes sent on the world channel (bandwidth telemetry). */
+  bytesOut = 0;
 
   private constructor(opts: WorldRoomOptions) {
     this.eventId = opts.eventId;
@@ -99,6 +109,8 @@ export class WorldRoom {
     this.now = opts.now ?? Date.now;
     this.sim = opts.sim;
     this.releaseAtMs = opts.releaseAtMs ?? BALANCE.releaseAtMs;
+    this.sim.onPenalty = (p) =>
+      void audit(this.dbh.db, this.eventId, 'system', p.teamId, 'driving.ghost_out', p).catch(() => {});
     this.bootedAt = this.now();
     const t = this.now();
     this.lastStatus = this.clock.status(t);
@@ -182,52 +194,101 @@ export class WorldRoom {
 
   private netCar(c: SimCar): NetCar {
     const s = c.state;
-    return { id: c.teamId, n: c.name, x: r2(s.x), z: r2(s.z), h: r4(s.heading), vx: r2(s.vx), vz: r2(s.vz), f: r2(s.fuel), hp: r2(s.health), tr: r2(s.tires), ni: r2(s.nitro), br: c.braking };
+    return {
+      cid: c.cid,
+      id: c.teamId,
+      n: c.name,
+      vc: c.params.code,
+      x: r2(s.x),
+      z: r2(s.z),
+      h: r4(s.heading),
+      vx: r2(s.vx),
+      vz: r2(s.vz),
+      f: r2(s.fuel),
+      hp: r2(s.health),
+      tr: r2(s.tires),
+      ni: r2(s.nitro),
+      br: c.braking,
+      g: this.sim.isGhost(c),
+      rs: this.sim.canReset(c),
+    };
   }
 
   private liteCar(c: SimCar): NetCarLite {
-    return [c.teamId, c.name, r2(c.state.x), r2(c.state.z), r4(c.state.heading), r2(forwardSpeed(c.state)), c.braking ? 1 : 0];
+    const flags = (c.braking ? CAR_FLAG_BRAKING : 0) | (this.sim.isGhost(c) ? CAR_FLAG_GHOST : 0);
+    return [c.cid, r2(c.state.x), r2(c.state.z), r4(c.state.heading), r2(forwardSpeed(c.state)), flags];
+  }
+
+  private mapCar(c: SimCar): MapCar {
+    return [c.cid, c.teamId, c.name, r2(c.state.x), r2(c.state.z), r4(c.state.heading)];
   }
 
   /**
-   * Interest management (M2 baseline; M3 adds tiers + hysteresis): racers get their own car + squad cars
-   * within the mid radius + traffic within the near radius every tick; role clients get their squad car at 5 Hz;
-   * hosts get every car at 2 Hz. Every car stays in the world regardless of who can see it.
+   * Interest tier of `other` as seen from `viewer`, with 10% hysteresis on both boundaries (DESIGN §5).
+   * Near ≤ 300 m → every tick (20 Hz); Mid ≤ 1200 m → every 4th tick (5 Hz); Far → global map channel only (1 Hz).
+   */
+  private tierFor(viewerWs: WebSocket, viewer: SimCar, other: SimCar): Tier {
+    let tiers = this.tiers.get(viewerWs);
+    if (!tiers) this.tiers.set(viewerWs, (tiers = new Map()));
+    const prev = tiers.get(other.cid) ?? 'far';
+    const d = Math.hypot(other.state.x - viewer.state.x, other.state.z - viewer.state.z);
+    const H = INTEREST.hysteresis;
+    const near = BALANCE.nearRadius;
+    const mid = BALANCE.midRadius;
+    let next: Tier;
+    if (prev === 'near') next = d <= near * (1 + H) ? 'near' : d <= mid * (1 + H) ? 'mid' : 'far';
+    else if (prev === 'mid') next = d <= near ? 'near' : d <= mid * (1 + H) ? 'mid' : 'far';
+    else next = d <= near ? 'near' : d <= mid ? 'mid' : 'far';
+    tiers.set(other.cid, next);
+    return next;
+  }
+
+  /**
+   * Streams the ONE world to every subscriber with role-scoped interest management. Every squad car is
+   * always in the world and always on the global map channel; tiers only change update rate.
    */
   private broadcastWorld(stepped: boolean) {
     if (!this.sim.cars.size) return;
-    const racerTick = stepped || this.loopCount % 4 === 0;
-    const roleTick = this.loopCount % 4 === 0;
-    const hostTick = this.loopCount % 10 === 0;
-    if (!racerTick && !roleTick && !hostTick) return;
+    const tick = this.sim.tick;
+    const every = (n: number) => (stepped ? tick % n === 0 : this.loopCount % n === 0);
+    const racerFrame = stepped || this.loopCount % 4 === 0;
+    const midFrame = stepped ? tick % INTEREST.midEvery === 0 : true;
+    const roleFrame = every(4);
+    const hostMapFrame = every(4);
+    const playerMapFrame = every(20);
+    if (!racerFrame && !roleFrame && !hostMapFrame && !playerMapFrame) return;
     const serverTime = this.now();
     const cars = [...this.sim.cars.values()];
     let traffic: { id: number; type: keyof typeof TRAFFIC_TYPES; x: number; z: number; heading: number }[] | null = null;
     const nearR2 = BALANCE.nearRadius ** 2;
-    const midR2 = BALANCE.midRadius ** 2;
-    let hostMsg: string | null = null;
+    let mapMsg: string | null = null;
+    const map = () =>
+      (mapMsg ??= JSON.stringify({ t: 'map', tick, serverTime, cars: cars.map((c) => this.mapCar(c)) } satisfies ServerMessage));
     for (const [ws, ctx] of this.clients) {
       if (ws.readyState !== ws.OPEN) continue;
       if (ctx.kind === 'host') {
-        if (!hostTick) continue;
-        hostMsg ??= JSON.stringify({ t: 'cars', tick: this.sim.tick, cars: cars.map((c) => this.liteCar(c)) } satisfies ServerMessage);
-        ws.send(hostMsg);
+        if (hostMapFrame) this.sendRaw(ws, map());
         continue;
       }
       if (ctx.kind !== 'player') continue;
+      if (playerMapFrame) this.sendRaw(ws, map());
       const mine = this.sim.cars.get(ctx.teamId);
       if (!mine) continue;
       if (ctx.role === 'RACER') {
-        if (!racerTick) continue;
+        if (!racerFrame) continue;
         traffic ??= this.sim.traffic.poses();
         const { x, z } = mine.state;
         const near: NetTraffic[] = [];
         for (const p of traffic) if ((p.x - x) ** 2 + (p.z - z) ** 2 <= nearR2) near.push([p.id, TRAFFIC_TYPES[p.type].code, r2(p.x), r2(p.z), r4(p.heading)]);
         const others: NetCarLite[] = [];
-        for (const c of cars) if (c !== mine && (c.state.x - x) ** 2 + (c.state.z - z) ** 2 <= midR2) others.push(this.liteCar(c));
+        for (const c of cars) {
+          if (c === mine) continue;
+          const tier = this.tierFor(ws, mine, c);
+          if (tier === 'near' || (tier === 'mid' && midFrame)) others.push(this.liteCar(c));
+        }
         const snap: ServerMessage = {
           t: 'snap',
-          tick: this.sim.tick,
+          tick,
           simMs: this.sim.simMs,
           serverTime,
           rain: this.sim.rain,
@@ -237,18 +298,40 @@ export class WorldRoom {
           cars: others,
           traffic: near,
         };
-        ws.send(JSON.stringify(snap));
-      } else if (roleTick) {
-        ws.send(JSON.stringify({ t: 'car', tick: this.sim.tick, car: this.netCar(mine), released: this.sim.released } satisfies ServerMessage));
+        this.sendRaw(ws, JSON.stringify(snap));
+      } else if (roleFrame) {
+        this.sendRaw(ws, JSON.stringify({ t: 'car', tick, car: this.netCar(mine), released: this.sim.released } satisfies ServerMessage));
       }
     }
   }
 
-  /** Route a racer's input to its squad car. Only the current RACER of that squad may drive. */
+  private sendRaw(ws: WebSocket, data: string) {
+    this.bytesOut += data.length;
+    ws.send(data);
+  }
+
+  /** Route a racer's input (plus redundant copies) to its squad car. Only the current RACER may drive. */
   handleInput(ws: WebSocket, msg: InputMessage): boolean {
     const ctx = this.clients.get(ws);
     if (!ctx || ctx.kind !== 'player' || ctx.role !== 'RACER') return false;
-    return this.sim.pushInput(ctx.teamId, msg.seq, sanitizeInput({ steer: msg.st, throttle: msg.th, brake: msg.br, nitro: msg.ni === true, handbrake: msg.hb === true }));
+    const batch: { seq: number; input: ReturnType<typeof sanitizeInput> }[] = [];
+    if (Array.isArray(msg.r)) {
+      for (const r of msg.r.slice(0, 8)) {
+        if (!Array.isArray(r) || r.length !== 5) continue;
+        const [seq, st, th, br, fl] = r;
+        batch.push({ seq: Number(seq), input: sanitizeInput({ steer: st, throttle: th, brake: br, nitro: (Number(fl) & 1) === 1, handbrake: (Number(fl) & 2) === 2 }) });
+      }
+    }
+    batch.push({ seq: Number(msg.seq), input: sanitizeInput({ steer: msg.st, throttle: msg.th, brake: msg.br, nitro: msg.ni === true, handbrake: msg.hb === true }) });
+    return this.sim.pushInputs(ctx.teamId, batch) > 0;
+  }
+
+  handleReset(ws: WebSocket): boolean {
+    const ctx = this.clients.get(ws);
+    if (!ctx || ctx.kind !== 'player' || ctx.role !== 'RACER') return false;
+    const ok = this.sim.resetCar(ctx.teamId, 'player');
+    if (ok) void audit(this.dbh.db, this.eventId, 'player', ctx.playerId, 'car.reset', { teamId: ctx.teamId, tick: this.sim.tick });
+    return ok;
   }
 
   worldStatus(): WorldStatus {
@@ -259,7 +342,10 @@ export class WorldRoom {
       rain: this.sim.rain,
       ...this.tickStats(),
       trafficCount: this.sim.traffic.agents.length,
+      penalties: [...this.sim.penalties],
       cars: [...this.sim.cars.values()].map((c) => ({
+        cid: c.cid,
+        ghost: this.sim.isGhost(c),
         teamId: c.teamId,
         name: c.name,
         x: r2(c.state.x),

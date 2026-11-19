@@ -2,6 +2,7 @@ import {
   Color3,
   Color4,
   DirectionalLight,
+  DynamicTexture,
   Engine,
   HemisphericLight,
   Matrix,
@@ -47,6 +48,8 @@ export interface CarPose {
   z: number;
   heading: number;
   braking?: boolean;
+  ghost?: boolean;
+  label?: string;
 }
 
 export function teamColor(id: string): Color3 {
@@ -60,7 +63,7 @@ export class GameScene {
   private readonly camera: UniversalCamera;
   private readonly sun: DirectionalLight;
   private me: CarRig | null = null;
-  private others = new Map<string, CarRig>();
+  private others = new Map<string | number, CarRig>();
   private trafficTemplates: Mesh[] = [];
   private trafficPool = new Map<number, InstancedMesh>();
   private signalHeads: { node: number; heading: number; lamps: Record<SignalColor, Mesh> }[] = [];
@@ -291,13 +294,18 @@ export class GameScene {
     this.me?.set(p);
   }
 
-  updateOthers(cars: (CarPose & { id: string })[]) {
-    const seen = new Set<string>();
+  get othersCount() {
+    return this.others.size;
+  }
+
+  updateOthers(cars: (CarPose & { id: string | number; colorKey: string })[]) {
+    const seen = new Set<string | number>();
     for (const c of cars) {
       seen.add(c.id);
       let rig = this.others.get(c.id);
-      if (!rig) this.others.set(c.id, (rig = new CarRig(this.scene, teamColor(c.id), false)));
+      if (!rig) this.others.set(c.id, (rig = new CarRig(this.scene, teamColor(c.colorKey), false)));
       rig.set(c);
+      if (c.label) rig.setLabel(c.label);
     }
     for (const [id, rig] of this.others) if (!seen.has(id)) rig.root.dispose(), this.others.delete(id);
   }
@@ -407,6 +415,9 @@ class CarRig {
   private readonly wheels: AbstractMesh[] = [];
   private lastX = 0;
   private lastZ = 0;
+  private label: Mesh | null = null;
+  private labelText = '';
+  private ghost = false;
 
   constructor(scene: Scene, color: Color3, hero: boolean) {
     const root = (this.root = new TransformNode('car', scene));
@@ -470,7 +481,47 @@ class CarRig {
     this.brake = brake;
   }
 
+  /** Squad name above the car (SPEC 2.3: squads can see each other's names). */
+  setLabel(text: string) {
+    if (text === this.labelText) return;
+    this.labelText = text;
+    this.label?.dispose(false, true);
+    const scene = this.root.getScene();
+    const tex = new DynamicTexture('lbl', { width: 512, height: 96 }, scene, false);
+    tex.hasAlpha = true;
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 512, 96);
+    ctx.fillStyle = 'rgba(11,13,18,0.75)';
+    ctx.fillRect(0, 12, 512, 72);
+    ctx.font = 'bold 52px system-ui, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(text.slice(0, 18), 256, 66);
+    tex.update();
+    const mat = new StandardMaterial('lblm', scene);
+    mat.diffuseTexture = tex;
+    mat.emissiveColor = new Color3(1, 1, 1);
+    mat.disableLighting = true;
+    mat.useAlphaFromDiffuseTexture = true;
+    mat.backFaceCulling = false;
+    const plane = MeshBuilder.CreatePlane('lblp', { width: 4, height: 0.75 }, scene);
+    plane.material = mat;
+    plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    plane.position.y = 2.4;
+    plane.parent = this.root;
+    plane.isPickable = false;
+    this.label = plane;
+  }
+
+  /** Ghosted (anti-ramming): visible but translucent and non-collidable. */
+  setGhost(g: boolean) {
+    if (g === this.ghost) return;
+    this.ghost = g;
+    for (const m of this.root.getChildMeshes()) if (m !== this.label) m.visibility = g ? 0.35 : 1;
+  }
+
   set(p: CarPose) {
+    this.setGhost(!!p.ghost);
     const dist = Math.hypot(p.x - this.lastX, p.z - this.lastZ);
     this.lastX = p.x;
     this.lastZ = p.z;

@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  CAR_FLAG_BRAKING,
+  CAR_FLAG_GHOST,
+  Interpolator,
   PHASES,
+  Predictor,
   createTestNetwork,
   forwardSpeed,
   formatClock,
   generateBuildings,
   type ClockState,
   type ClientMessage,
+  type MapMessage,
   type Snapshot,
 } from '@redline/shared';
 import { InputState, type Control } from './input';
-import { Interpolator, Predictor } from './net';
+import { drawMap, type MapDot } from './minimap';
 import { GameScene, type CameraMode, type Quality } from './scene';
+
+export type WorldFeed = Snapshot | MapMessage;
 
 export interface RacerViewProps {
   teamId: string;
@@ -20,7 +27,7 @@ export interface RacerViewProps {
   clock: ClockState | null;
   offset: number;
   send: (m: ClientMessage) => void;
-  subscribe: (fn: (s: Snapshot) => void) => () => void;
+  subscribe: (fn: (m: WorldFeed) => void) => () => void;
 }
 
 interface Hud {
@@ -35,6 +42,8 @@ interface Hud {
   correction: number;
   traffic: number;
   others: number;
+  ghost: boolean;
+  canReset: boolean;
 }
 
 const STEP_MS = 50;
@@ -47,6 +56,7 @@ export default function RacerView(props: RacerViewProps) {
   const [cam, setCam] = useState<CameraMode>('chase');
   const [quality, setQuality] = useState<Quality>(() => (localStorageGet('redline.quality') as Quality) || 'medium');
   const [error, setError] = useState('');
+  const mapRef = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -64,16 +74,28 @@ export default function RacerView(props: RacerViewProps) {
     gameRef.current = game;
     game.setMyCar(props.teamId);
     const predictor = new Predictor(net, buildings);
-    const others = new Interpolator<{ id: string; x: number; z: number; heading: number; braking: boolean }>();
+    const others = new Interpolator<{ id: number; x: number; z: number; heading: number; flags: number }>();
+    // Global map channel (1 Hz): every squad, always — names + far positions.
+    const roster = new Map<number, { teamId: string; name: string; x: number; z: number; heading: number }>();
+    let myCid = 0;
     const traffic = new Interpolator<{ id: number; type: number; x: number; z: number; heading: number }>();
     const input = inputRef.current;
     input.attach();
     let lastSnap: { simMs: number; at: number; trafficN: number; othersN: number } = { simMs: 0, at: performance.now(), trafficN: 0, othersN: 0 };
     let live = false;
+    let lastMe: Snapshot['me'] = null;
+    let mapAt = 0;
 
-    const unsub = props.subscribe((snap) => {
+    const unsub = props.subscribe((msg) => {
+      if (msg.t === 'map') {
+        for (const [cid, teamId, name, x, z, heading] of msg.cars) roster.set(cid, { teamId, name, x, z, heading });
+        return;
+      }
+      const snap = msg;
       predictor.onSnapshot(snap);
-      others.push(snap.serverTime, snap.cars.map(([id, , x, z, h, , br]) => ({ id, x, z, heading: h, braking: br === 1 })));
+      if (snap.me) myCid = snap.me.cid;
+      lastMe = snap.me;
+      others.push(snap.serverTime, snap.cars.map(([id, x, z, h, , flags]) => ({ id, x, z, heading: h, flags })));
       traffic.push(snap.serverTime, snap.traffic.map(([id, type, x, z, h]) => ({ id, type, x, z, heading: h })));
       lastSnap = { simMs: snap.simMs, at: performance.now(), trafficN: snap.traffic.length, othersN: snap.cars.length };
       game.setRain(snap.rain);
@@ -96,17 +118,33 @@ export default function RacerView(props: RacerViewProps) {
         while (acc >= STEP_MS) {
           acc -= STEP_MS;
           const inp = input.sample(STEP_MS / 1000);
-          const seq = predictor.step(inp);
-          propsRef.current.send({ t: 'input', seq, st: inp.steer, th: inp.throttle, br: inp.brake, ni: inp.nitro, hb: inp.handbrake });
+          // Only send once we have authoritative state to predict from (exactly-once input application).
+          if (predictor.state) propsRef.current.send(predictor.stepMessage(inp));
         }
       } else acc = 0;
       const pose = predictor.renderPose(acc / STEP_MS, frameDt);
       const serverNow = Date.now() + propsRef.current.offset;
       if (pose) {
-        game.updateMe({ x: pose.x, z: pose.z, heading: pose.heading, braking: predictor.braking });
+        game.updateMe({ x: pose.x, z: pose.z, heading: pose.heading, braking: predictor.braking, ghost: lastMe?.g });
         game.updateCamera(pose, Math.abs(forwardSpeed(pose.state)), frameDt);
       }
-      game.updateOthers(others.sample(serverNow));
+      const near = others.sample(serverNow);
+      game.updateOthers(
+        near.map((c) => {
+          const r = roster.get(c.id);
+          return { ...c, braking: (c.flags & CAR_FLAG_BRAKING) !== 0, ghost: (c.flags & CAR_FLAG_GHOST) !== 0, label: r?.name, colorKey: r?.teamId ?? String(c.id) };
+        }),
+      );
+      if (now - mapAt > 250 && mapRef.current) {
+        mapAt = now;
+        const nearIds = new Set(near.map((c) => c.id));
+        const dots: MapDot[] = [];
+        for (const [cid, r] of roster) if (cid !== myCid && !nearIds.has(cid)) dots.push({ id: cid, x: r.x, z: r.z, heading: r.heading, color: '#ff8a9a' });
+        for (const c of near) dots.push({ id: c.id, x: c.x, z: c.z, heading: c.heading, ghost: (c.flags & CAR_FLAG_GHOST) !== 0 });
+        if (pose) dots.push({ id: 'me', x: pose.x, z: pose.z, heading: pose.heading, me: true });
+        const ctx = mapRef.current.getContext('2d');
+        if (ctx) drawMap(ctx, net, dots);
+      }
       game.updateTraffic(traffic.sample(serverNow));
       game.updateSignals(lastSnap.simMs + (live ? now - lastSnap.at : 0));
       game.scene.render();
@@ -129,6 +167,8 @@ export default function RacerView(props: RacerViewProps) {
           correction: predictor.lastCorrection,
           traffic: lastSnap.trafficN,
           others: lastSnap.othersN,
+          ghost: !!lastMe?.g,
+          canReset: !!lastMe?.rs,
         });
       }
     });
@@ -204,6 +244,13 @@ export default function RacerView(props: RacerViewProps) {
         <div className="banner">Cars release at 03:00 — City Sprint. Engines warm.</div>
       )}
       {clock?.status === 'PAUSED' && <div className="banner">Paused by host</div>}
+      {hud?.ghost && <div className="banner">Ghosted for repeated ramming — non-collidable for 5 s, clean-driving penalty logged</div>}
+      {hud?.canReset && (
+        <button className="btn primary reset-btn" onClick={() => props.send({ t: 'reset' })} data-testid="btn-reset">
+          Safe reset to lane
+        </button>
+      )}
+      <canvas ref={mapRef} className="minimap" width={240} height={240} data-testid="minimap" aria-label="Map of all squads" />
       <div className="hud-speed" data-testid="hud-speed" data-speed={Math.round(hud?.speed ?? 0)}>
         <span>{Math.round(hud?.speed ?? 0)}</span>
         <small>km/h</small>
