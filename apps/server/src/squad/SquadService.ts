@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { createCipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
   bluffEntries,
@@ -124,9 +125,10 @@ export class SquadService {
   /* ---------------- activation (at START) ---------------- */
 
   /** Generate every squad's variants and persist them. Idempotent per process. */
-  async activate(teamIds: string[]) {
+  async activate(teamIds: string[], opts: { persist?: boolean } = {}) {
     if (this.active) return;
     this.active = true;
+    this.persist = opts.persist !== false;
     const eventRng = createRng(this.seed, 'squad:event');
     const codingRounds = CHALLENGE_SCHEDULE.filter((c) => c.kind === 'coding');
     this.codingTemplates = codingRoundTemplates(eventRng, codingRounds.length, codingRounds[0]?.questions ?? 4);
@@ -159,7 +161,7 @@ export class SquadService {
           this.fourKey.set(`${sched.id}:${teamId}`, v);
           await this.insertVariant(dbId, teamId, { prompt: v.prompt }, v.answer);
           for (const role of ROLES) {
-            await this.db.insert(challengeClues).values({ challengeId: dbId, teamId, role, clueCiphertext: this.encrypt(v.clues[role]) }).onConflictDoNothing();
+            if (this.persist) await this.db.insert(challengeClues).values({ challengeId: dbId, teamId, role, clueCiphertext: this.encrypt(v.clues[role]) }).onConflictDoNothing();
           }
         }
       } else if (sched.kind === 'navigation') {
@@ -172,7 +174,7 @@ export class SquadService {
       } else if (sched.kind === 'bluff') {
         const p = BLUFF_PROMPTS[bluffPick[bluffIdx++ % bluffPick.length]!]!;
         const t0 = Date.now();
-        const [row] = await this.db
+        const [row] = !this.persist ? [{ id: '' }] : await this.db
           .insert(bluffRounds)
           .values({
             eventId: this.eventId,
@@ -191,7 +193,10 @@ export class SquadService {
     }
   }
 
+  private persist = true;
+
   private async insertChallenge(code: string, type: 'coding' | 'four_key' | 'navigation', sched: ScheduledChallenge, maxPoints: number, category: ScoringCategory) {
+    if (!this.persist) return ''; // restore: ids come from the snapshot
     const [row] = await this.db
       .insert(challenges)
       .values({ eventId: this.eventId, code, type, phase: phaseAt(sched.opensAt) ?? 'IGNITION', payload: { title: sched.title, opensAt: sched.opensAt, closesAt: sched.closesAt }, answerHash: 'per-team', maxPoints, category })
@@ -200,7 +205,8 @@ export class SquadService {
     return row!.id;
   }
 
-  private insertVariant(challengeId: string, teamId: string, payload: unknown, answer: string) {
+  private async insertVariant(challengeId: string, teamId: string, payload: unknown, answer: string) {
+    if (!this.persist) return;
     return this.db.insert(challengeVariants).values({ challengeId, teamId, payload, answerHash: this.hash(answer) }).onConflictDoNothing();
   }
 
@@ -519,6 +525,45 @@ export class SquadService {
       if (fooledPts) await this.award(teamId, R.category, fooledPts, `${b.sched.id}: fooled ${r.fooled} player(s)`, 'bluff_fooled', b.sched.id);
     }
     b.results = results;
+  }
+
+  /* ---------------- recovery snapshots (M8) ---------------- */
+
+  snapshot() {
+    return {
+      active: this.active,
+      dbIds: [...this.dbIds],
+      attempts: [...this.attempts],
+      bluffs: [...this.bluffs].map(([id, b]) => ({ id, dbId: b.dbId, truthChoiceId: b.truthChoiceId, entries: [...b.entries], votes: [...b.votes], order: b.order, results: b.results ? [...b.results] : null })),
+      teams: [...this.teams],
+      idem: [...this.idem],
+      lastStatus: [...this.lastStatus],
+    };
+  }
+
+  /** Rebuild content deterministically (no DB writes), then overlay the snapshot; scores reload from scoring_events. */
+  async restore(snap: ReturnType<SquadService['snapshot']>, teamIds: string[]) {
+    if (!snap.active) return;
+    await this.activate(teamIds, { persist: false });
+    this.persist = true;
+    for (const [k, v] of snap.dbIds) this.dbIds.set(k, v);
+    for (const [k, v] of snap.attempts) this.attempts.set(k, v);
+    for (const b of snap.bluffs) {
+      const cur = this.bluffs.get(b.id);
+      if (!cur) continue;
+      Object.assign(cur, { dbId: b.dbId, truthChoiceId: b.truthChoiceId, entries: new Map(b.entries), votes: new Map(b.votes), order: b.order, results: b.results ? new Map(b.results) : null });
+    }
+    for (const [k, v] of snap.teams) this.teams.set(k, v);
+    for (const [k, v] of snap.idem) this.idem.set(k, v);
+    for (const [k, v] of snap.lastStatus) this.lastStatus.set(k, v);
+    await this.reloadScores(teamIds);
+  }
+
+  async reloadScores(teamIds: string[]) {
+    for (const teamId of teamIds) {
+      const rows = await this.db.select({ category: scoringEvents.category, points: scoringEvents.points, sourceId: scoringEvents.sourceId }).from(scoringEvents).where(eq(scoringEvents.teamId, teamId));
+      this.scores.set(teamId, rows.map((r) => ({ category: r.category as ScoringCategory, points: r.points, sourceId: r.sourceId })));
+    }
   }
 
   /** SERVER-INTERNAL answer key (tests / host tooling). Never routed to any client. */

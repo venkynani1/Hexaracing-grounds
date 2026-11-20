@@ -64,6 +64,19 @@ export class GateService {
     private readonly now: () => number,
   ) {}
 
+  snapshot() {
+    return { teams: [...this.teams], convoyStarted: this.convoyStarted, revealed: this.revealed, timeline: this.timeline, standings: this.standings, standingsAt: this.standingsAt };
+  }
+
+  restore(snap: ReturnType<GateService['snapshot']>) {
+    for (const [k, v] of snap.teams) this.teams.set(k, v);
+    this.convoyStarted = snap.convoyStarted;
+    this.revealed = snap.revealed;
+    this.timeline = snap.timeline;
+    this.standings = snap.standings;
+    this.standingsAt = snap.standingsAt;
+  }
+
   activate(teamIds: string[]) {
     const ordered = [...teamIds].sort((a, b) => (this.sim.cars.get(a)?.cid ?? 0) - (this.sim.cars.get(b)?.cid ?? 0));
     ordered.forEach((teamId, i) => {

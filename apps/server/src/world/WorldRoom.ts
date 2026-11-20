@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
-import { events, eventStates, players, vehicleCheckpoints, type DbHandle } from '@redline/db';
+import { events, eventStates, players, recoverySnapshots, vehicleCheckpoints, type DbHandle } from '@redline/db';
+import { desc, inArray } from 'drizzle-orm';
 import {
   BALANCE,
   beatsBetween,
@@ -231,6 +232,70 @@ export class WorldRoom {
     this.sim.spawn(teams.map((t) => ({ teamId: t.id, name: t.name, vehicle: null, start: t.startCode })));
   }
 
+  /* ---------------- recovery snapshots (M8, DESIGN §2) ---------------- */
+
+  private lastSnapshotAt = 0;
+  static readonly SNAPSHOT_INTERVAL_MS = 10_000;
+
+  /** Full recoverable state of the ONE world. */
+  buildSnapshot() {
+    const t = this.now();
+    return {
+      v: 1,
+      takenAt: t,
+      elapsedMs: this.clock.elapsedMs(t),
+      status: this.clock.status(t),
+      lastElapsed: this.lastElapsed,
+      directorTick: this.directorTick,
+      sim: this.sim.snapshot(),
+      squad: this.squad?.snapshot() ?? null,
+      pit: this.pit?.snapshot() ?? null,
+      director: this.director?.snapshot() ?? null,
+      gate: this.gate?.snapshot() ?? null,
+    };
+  }
+
+  async snapshotNow(cause = 'interval') {
+    if (!this.clock.started) return null;
+    const snap = this.buildSnapshot();
+    this.lastSnapshotAt = this.now();
+    await this.dbh.db.insert(recoverySnapshots).values({ eventId: this.eventId, tick: snap.sim.tick, phase: this.clock.snapshot(snap.takenAt).phase, state: { ...snap, cause } });
+    // Keep the newest 50.
+    const old = await this.dbh.db
+      .select({ id: recoverySnapshots.id })
+      .from(recoverySnapshots)
+      .where(eq(recoverySnapshots.eventId, this.eventId))
+      .orderBy(desc(recoverySnapshots.createdAt))
+      .offset(50);
+    if (old.length) await this.dbh.db.delete(recoverySnapshots).where(inArray(recoverySnapshots.id, old.map((o) => o.id)));
+    return snap;
+  }
+
+  /**
+   * Restore after a crash: the world comes back exactly as in the newest snapshot, PAUSED at its elapsed time
+   * (RECOVERING → PAUSED); the host resumes. Clients rejoin to the same slots with their rejoin tokens.
+   */
+  async restoreFrom(snap: ReturnType<WorldRoom['buildSnapshot']>) {
+    const t = this.now();
+    this.clock.restorePausedAt(t, snap.elapsedMs);
+    this.sim.restore(snap.sim);
+    const teamIds = snap.sim.cars.map((c) => c.teamId);
+    if (snap.squad && this.squad) await this.squad.restore(snap.squad, teamIds);
+    if (snap.pit && this.pit) this.pit.restore(snap.pit);
+    if (snap.gate && this.gate) {
+      this.gate.activate(teamIds);
+      this.gate.restore(snap.gate);
+    }
+    if (snap.director && this.director) this.director.restore(snap.director);
+    this.lastElapsed = snap.lastElapsed;
+    this.directorTick = snap.directorTick;
+    const now = this.clock.snapshot(t);
+    this.lastStatus = now.status;
+    this.lastPhase = now.phase;
+    await this.persist({ ...now, status: 'RECOVERING' }, `recovered_from_snapshot:tick=${snap.sim.tick}`);
+    await this.persist(now, 'recovered:paused_for_host');
+  }
+
   /** Persist checkpoint passes (idempotent: unique(team, checkpoint)). Live state stays in memory. */
   private async flushCheckpoints() {
     if (!this.sim.checkpointPasses.length) return;
@@ -249,7 +314,7 @@ export class WorldRoom {
         await this.squad.award(p.teamId, 'DRIVING', R.reach, `checkpoint ${p.index + 1} reached`, 'checkpoint_reach', p.checkpointId);
         if (p.clean) await this.squad.award(p.teamId, 'DRIVING', R.clean, `checkpoint ${p.index + 1}: clean driving`, 'checkpoint_clean', p.checkpointId);
       }
-      if (passes.length) this.pushSquad(null);
+      for (const teamId of new Set(passes.map((p) => p.teamId))) this.pushSquad(teamId);
     } catch (e) {
       console.error('[checkpoints]', e);
     }
@@ -284,7 +349,11 @@ export class WorldRoom {
     this.broadcastWorld(steps > 0);
   }
 
+  /** Every step duration since boot (bounded) — for whole-run p99 in load tests and the host metrics. */
+  readonly allTickDurations: number[] = [];
+
   private recordStep(ms: number, wall: number) {
+    if (this.allTickDurations.length < 200_000) this.allTickDurations.push(ms);
     this.tickDurations.push(ms);
     if (this.tickDurations.length > 400) this.tickDurations.shift();
     this.stepTimes.push(wall);
@@ -452,6 +521,13 @@ export class WorldRoom {
       released: this.sim.released,
       rain: this.sim.rain,
       ...this.tickStats(),
+      tickP99AllMs: (() => {
+        const d = [...this.allTickDurations].sort((x, y) => x - y);
+        return d.length ? Math.round(d[Math.min(d.length - 1, Math.floor(d.length * 0.99))]! * 1000) / 1000 : 0;
+      })(),
+      tickSamples: this.allTickDurations.length,
+      clients: this.clients.size,
+      bytesOut: this.bytesOut,
       trafficCount: this.sim.traffic.agents.length,
       penalties: [...this.sim.penalties],
       cars: [...this.sim.cars.values()].map((c) => ({
@@ -490,7 +566,9 @@ export class WorldRoom {
     }
     if (this.squad) await this.squad.onTick();
     if (this.gate && this.clock.started) await this.gate.onTick();
+    if (this.clock.started && !this.clock.paused && this.now() - this.lastSnapshotAt >= WorldRoom.SNAPSHOT_INTERVAL_MS) await this.snapshotNow('interval');
     if (changed) {
+      if (this.clock.started) void this.snapshotNow('transition').catch((e) => console.error('[snapshot]', e));
       const cause =
         snap.status !== this.lastStatus ? `status:${this.lastStatus}->${snap.status}` : `phase:${this.lastPhase}->${snap.phase}`;
       this.lastStatus = snap.status;
@@ -592,6 +670,8 @@ export class WorldRoom {
 
   bindPlayer(ws: WebSocket, playerId: string, teamId: string, role: Role) {
     this.clients.set(ws, { kind: 'player', playerId, teamId, role });
+    // A newly bound Racer connection = a new input stream (page reload / rejoin / server restart).
+    if (role === 'RACER') this.sim.resetInputStream(teamId);
     const n = (this.connectedPlayers.get(playerId) ?? 0) + 1;
     this.connectedPlayers.set(playerId, n);
     if (n === 1) void this.touchPlayer(playerId, true);

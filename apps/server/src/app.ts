@@ -5,7 +5,8 @@ import cors from '@fastify/cors';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { eq } from 'drizzle-orm';
 import { eq as eqOp } from 'drizzle-orm';
-import { events, seedCatalogue, startLocations, worldMetadata, type DbHandle } from '@redline/db';
+import { events, recoverySnapshots, seedCatalogue, startLocations, worldMetadata, type DbHandle } from '@redline/db';
+import { desc as descOp } from 'drizzle-orm';
 import { testMap, type StartLocationInfo, type WorldMap } from '@redline/shared';
 import { chennaiMap } from '@redline/shared/map/chennai';
 import type { ClientMessage, ServerMessage } from '@redline/shared';
@@ -94,6 +95,9 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   // server. Clients get a one-way derived WORLD seed for visuals, signals and traffic only.
   const worldSeed = `w${hash32(`${String(event.seed)}:world:${config.sessionSecret}`).toString(16)}`;
   const sim = new WorldSim({ seed: worldSeed, trafficCount: config.trafficCount, map });
+  const warm = sim.prewarm();
+  const jitMs = map.id !== 'test' ? WorldSim.warmJit(map) : 0;
+  if (map.id !== 'test') console.log(`[server] prewarmed ${warm.cells} corridor cells in ${warm.ms} ms; JIT warm-up ${jitMs} ms`);
   const room = WorldRoom.create({ eventId: event.id, eventName: event.name, clock, db, now, sim, releaseAtMs: config.releaseAtMs });
   const signer = new TokenSigner(config.sessionSecret);
   const registration = new RegistrationService(db.db, signer, event.id, room.registrationOpen, now);
@@ -119,9 +123,21 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   squad.gateView = (teamId, role) => gate.viewFor(teamId, role);
   room.attachGate(gate);
   if (clock.started) {
-    await room.spawnCars();
-    await squad.activate([...sim.cars.keys()]);
-    gate.activate([...sim.cars.keys()]);
+    // Crash recovery: restore the newest snapshot (PAUSED for the host), else fall back to a fresh spawn.
+    const [latest] = await db.db
+      .select()
+      .from(recoverySnapshots)
+      .where(eqOp(recoverySnapshots.eventId, event.id))
+      .orderBy(descOp(recoverySnapshots.createdAt))
+      .limit(1);
+    if (latest) {
+      await room.restoreFrom(latest.state as Parameters<WorldRoom['restoreFrom']>[0]);
+      await audit(db.db, event.id, 'system', null, 'event.recovered_from_snapshot', { tick: latest.tick, snapshotId: latest.id });
+    } else {
+      await room.spawnCars();
+      await squad.activate([...sim.cars.keys()]);
+      gate.activate([...sim.cars.keys()]);
+    }
   }
   if (autoPaused) await audit(db.db, event.id, 'system', null, 'event.recovered_paused', { at: now() });
 

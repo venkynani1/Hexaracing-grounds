@@ -39,6 +39,23 @@ export async function registerSquad(base: string, name: string): Promise<Squad> 
   return { captain, racer, name };
 }
 
+/** Exchange a rejoin credential for a fresh session (same player, same slot). */
+export async function rejoin(base: string, rejoinToken: string): Promise<SessionResponse> {
+  return postJson<SessionResponse>(`${base}/api/session/rejoin`, { rejoinToken });
+}
+
+export interface FullSquad {
+  name: string;
+  members: Record<'CAPTAIN' | 'RACER' | 'ENGINEER' | 'DECEIVER', SessionResponse>;
+}
+
+/** Register a full squad of four through the public API. */
+export async function registerFullSquad(base: string, name: string): Promise<FullSquad> {
+  const captain = await postJson<SessionResponse>(`${base}/api/squads`, { squadName: name, displayName: `${name} Cap` });
+  const join = (role: string) => postJson<SessionResponse>(`${base}/api/squads/join`, { code: captain.joinCode, displayName: `${name} ${role}`, role });
+  return { name, members: { CAPTAIN: captain, RACER: await join('RACER'), ENGINEER: await join('ENGINEER'), DECEIVER: await join('DECEIVER') } };
+}
+
 export interface BotStats {
   messages: number;
   bytes: number;
@@ -138,6 +155,11 @@ export class Bot {
 
   close() {
     this.ws?.close();
+  }
+
+  /** Simulate a dropped connection (no close handshake). */
+  drop() {
+    this.ws?.terminate();
   }
 }
 

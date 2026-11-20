@@ -84,6 +84,11 @@ export class EventClock {
     this.state = { ...this.state, pausedMs: this.state.pausedMs + (now - this.state.pausedAt), pausedAt: null };
   }
 
+  /** Recovery: put the clock PAUSED at exactly `elapsedMs` of LIVE time (downtime is not counted). */
+  restorePausedAt(now: number, elapsedMs: number) {
+    this.state = { startedAt: now - this.countdownMs - elapsedMs, pausedMs: 0, pausedAt: now, preStartStatus: 'REGISTRATION_LOCKED' };
+  }
+
   /** Rehearsal/test only (ALLOW_TIME_WARP): jump forward to a LIVE elapsed time. Never backwards. */
   warpTo(now: number, targetElapsedMs: number) {
     if (!this.started) throw new Error('not started');

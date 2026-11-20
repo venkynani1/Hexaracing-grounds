@@ -32,6 +32,16 @@ export class Director {
     private readonly onChange: (s: WorldState) => void,
   ) {}
 
+  snapshot() {
+    return { state: this.state, log: [...this.log] };
+  }
+
+  restore(snap: ReturnType<Director['snapshot']>) {
+    this.state = structuredClone(snap.state);
+    this.log.splice(0, this.log.length, ...snap.log);
+    this.applyToSim();
+  }
+
   private commit(mut: (s: WorldState) => void) {
     const next = structuredClone(this.state);
     mut(next);

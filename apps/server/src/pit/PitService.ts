@@ -50,6 +50,28 @@ export class PitService {
     for (const def of sim.map.stations) this.stations.set(def.id, { def, bays: Array(BALANCE.pit.bays).fill(null), queue: [] });
   }
 
+  snapshot() {
+    return {
+      stations: [...this.stations].map(([id, st]) => ({ id, bays: st.bays, queue: st.queue })),
+      stops: [...this.stops].map(([t, st]) => ({ ...st, station: st.station.id })),
+      count: [...this.count],
+      cooldown: [...this.cooldown],
+    };
+  }
+
+  restore(snap: ReturnType<PitService['snapshot']>) {
+    for (const s of snap.stations) {
+      const st = this.stations.get(s.id);
+      if (st) (st.bays = s.bays), (st.queue = s.queue);
+    }
+    for (const st of snap.stops) {
+      const def = this.stations.get(st.station)?.def;
+      if (def) this.stops.set(st.teamId, { ...st, station: def });
+    }
+    for (const [k, v] of snap.count) this.count.set(k, v);
+    for (const [k, v] of snap.cooldown) this.cooldown.set(k, v);
+  }
+
   stopOf(teamId: string) {
     const s = this.stops.get(teamId);
     return s && s.stage !== 'done' ? s : null;

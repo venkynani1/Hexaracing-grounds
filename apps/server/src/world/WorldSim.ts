@@ -168,7 +168,8 @@ export class WorldSim {
       this.buildings = generateBuildings(this.net, opts.seed, ex);
       this.buildingsNear = () => (this.barriers.length ? [...this.buildings, ...this.barriers] : this.buildings);
     } else {
-      const pb = new ProceduralBuildings(this.net, opts.seed, ex);
+      const pb = new ProceduralBuildings(this.net, opts.seed, ex, 20_000);
+      this.procedural = pb;
       this.buildings = [];
       this.buildingsNear = (x, z) => (this.barriers.length ? [...pb.near(x, z, 40), ...this.barriers] : pb.near(x, z, 40));
     }
@@ -182,6 +183,118 @@ export class WorldSim {
       excludeDe: this.map.id === 'test' ? [0] : spawnEdges,
       spawnDe: corridor,
     });
+  }
+
+  /** Recovery snapshot of every squad car (traffic is re-seeded on restore — documented). */
+  snapshot() {
+    return {
+      tick: this.tick,
+      rain: this.rain,
+      released: this.released,
+      penalties: [...this.penalties],
+      cars: [...this.cars.values()].map((c) => ({
+        teamId: c.teamId,
+        cid: c.cid,
+        name: c.name,
+        vc: c.params.code,
+        state: c.state,
+        course: c.course,
+        nextCp: c.nextCp,
+        arrival: c.arrival,
+        buffs: [...c.buffs],
+        held: c.held,
+        auto: c.auto,
+        freeReset: c.freeReset,
+        ghostUntil: c.ghostUntil,
+        lastPassTick: c.lastPassTick,
+        lastSeq: c.lastSeq,
+        ackSeq: c.ackSeq,
+      })),
+    };
+  }
+
+  restore(snap: ReturnType<WorldSim['snapshot']>) {
+    this.tick = snap.tick;
+    this.rain = snap.rain;
+    this.released = snap.released;
+    this.penalties.splice(0, this.penalties.length, ...snap.penalties);
+    this.cars.clear();
+    for (const c of snap.cars) {
+      this.cars.set(c.teamId, {
+        cid: c.cid,
+        teamId: c.teamId,
+        name: c.name,
+        params: VEHICLES[c.vc],
+        state: c.state,
+        queue: [],
+        lastInput: NEUTRAL_INPUT,
+        lastSeq: c.lastSeq,
+        ackSeq: c.ackSeq,
+        ticksSinceInput: 0,
+        braking: false,
+        ghostUntil: c.ghostUntil,
+        freeReset: c.freeReset,
+        stuckMs: 0,
+        inputBudget: INPUT_BUDGET_MAX,
+        buffs: new Map(c.buffs),
+        held: c.held,
+        auto: c.auto,
+        arrival: c.arrival,
+        lastPassTick: c.lastPassTick,
+        course: c.course,
+        nextCp: c.nextCp,
+      });
+    }
+  }
+
+  private procedural: ProceduralBuildings | null = null;
+
+  /**
+   * Boot-time warm-up (never inside a tick): generate every procedural building cell along all course corridors,
+   * build the road spatial index, and JIT-warm the step. Cars that wander off-course still generate lazily.
+   */
+  prewarm(): { cells: number; ms: number } {
+    const t0 = Date.now();
+    isOnRoad(this.net, 0, 0);
+    let cells = 0;
+    if (this.procedural) {
+      const seen = new Set<string>();
+      for (const c of Object.values(this.map.courses))
+        for (const de of c.des) {
+          const e = this.net.edges[de >> 1]!;
+          const a = this.net.nodes[e.a]!;
+          const b = this.net.nodes[e.b]!;
+          const n = Math.max(1, Math.ceil(e.length / 100));
+          for (let i = 0; i <= n; i++) {
+            const x = a.x + ((b.x - a.x) * i) / n;
+            const z = a.z + ((b.z - a.z) * i) / n;
+            const k = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            this.procedural.near(x, z, 220);
+            cells++;
+          }
+        }
+      for (const st of this.map.stations) this.procedural.near(st.x, st.z, 220);
+    }
+    return { cells, ms: Date.now() - t0 };
+  }
+
+  /**
+   * JIT warm-up on a THROWAWAY simulation (separate instance, never the event's world): compiles the hot step code
+   * before players connect so the first real ticks aren't cold.
+   */
+  static warmJit(map: WorldMap, steps = 300): number {
+    const t0 = Date.now();
+    const w = new WorldSim({ seed: 'jit-warmup', trafficCount: 120, map });
+    const starts = map.starts.filter((s) => s.verified);
+    w.spawn(Array.from({ length: 12 }, (_, i) => ({ teamId: `warm-${i}`, name: `warm-${i}`, start: starts[i % starts.length]?.code })));
+    w.released = true;
+    for (let i = 1; i <= steps; i++) {
+      for (const c of w.cars.values()) w.pushInput(c.teamId, i, { ...NEUTRAL_INPUT, throttle: 1, steer: Math.sin(i / 20) * 0.3 });
+      w.step();
+    }
+    return Date.now() - t0;
   }
 
   courseOf(car: SimCar): CourseDef | undefined {
@@ -232,6 +345,15 @@ export class WorldSim {
         lastPassTick: 0,
       });
     });
+  }
+
+  /** A (re)connected Racer starts a fresh input stream (its predictor restarts at seq 1). Replays within a stream stay rejected. */
+  resetInputStream(teamId: string) {
+    const car = this.cars.get(teamId);
+    if (!car) return;
+    car.lastSeq = 0;
+    car.ackSeq = 0;
+    car.queue = [];
   }
 
   /** Queue a racer input. Rejects replayed / out-of-order seq. Returns false when rejected. */

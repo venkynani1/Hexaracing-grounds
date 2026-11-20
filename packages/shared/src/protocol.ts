@@ -219,6 +219,11 @@ export interface WorldStatus {
   rain: boolean;
   tickHz: number;
   tickP99Ms: number;
+  /** p99 over every step since boot */
+  tickP99AllMs?: number;
+  tickSamples?: number;
+  clients?: number;
+  bytesOut?: number;
   trafficCount: number;
   cars: { cid: number; teamId: string; name: string; x: number; z: number; heading: number; speed: number; fuel: number; health: number; ghost: boolean }[];
   penalties: { teamId: string; victimTeamId: string; tick: number; reason: string }[];
