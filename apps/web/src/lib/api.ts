@@ -24,7 +24,20 @@ async function req<T>(method: string, path: string, body?: unknown, headers: Rec
 }
 
 export const api = {
-  event: () => req<{ eventName: string; clock: ClockState; registrationOpen: boolean; map: 'test' | 'chennai' }>('GET', '/api/event'),
+  event: () => req<{ eventName: string; clock: ClockState; registrationOpen: boolean; map: 'test' | 'chennai'; worldSeed: string }>('GET', '/api/event'),
+  standings: () => req<{ final: boolean; standings: import('@redline/shared').Standing[] }>('GET', '/api/standings'),
+  /** Fetch the player's PDF with their bearer token and trigger a browser download. */
+  downloadLetter: async (token: string) => {
+    const res = await fetch(`${BASE}/api/offer-letter`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new HttpError(res.status, 'LETTER', (await res.json().catch(() => ({}))).message ?? 'Not available');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'code-redline-commemorative-letter.pdf';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  },
   startLocations: () => req<StartLocationInfo[]>('GET', '/api/start-locations'),
   setStartLocation: (token: string, code: string) => req<{ ok: true }>('POST', '/api/team/start-location', { code }, { authorization: `Bearer ${token}` }),
   createSquad: (squadName: string, displayName: string) => req<SessionResponse>('POST', '/api/squads', { squadName, displayName }),
@@ -49,6 +62,10 @@ export const api = {
     pitDiagnose: (token: string, answer: string) => req<{ submitted: true }>('POST', '/api/squad/pit/diagnose', { answer }, bearer(token)),
     pitVerify: (token: string, index: number) => req<{ submitted: true }>('POST', '/api/squad/pit/verify', { index }, bearer(token)),
     pitConfirm: (token: string) => req<{ serviceEndsInMs: number }>('POST', '/api/squad/pit/confirm', {}, bearer(token)),
+    gateEscort: (token: string) => req<{ escorting: true }>('POST', '/api/squad/gate/escort', {}, bearer(token)),
+    gateDebug: (token: string, answer: string) => req<{ correct: boolean; digit: number }>('POST', '/api/squad/gate/debug', { answer }, bearer(token)),
+    gateAuth: (token: string, index: number) => req<{ correct: boolean; digit: number }>('POST', '/api/squad/gate/auth', { index }, bearer(token)),
+    gateCode: (token: string, code: string) => req<SubmitResult>('POST', '/api/squad/gate/code', { code }, bearer(token)),
     bluffVote: (token: string, id: string, choiceId: string) => req<{ ok: true }>('POST', `/api/squad/bluff/${id}/vote`, { choiceId }, bearer(token)),
   },
   host: {

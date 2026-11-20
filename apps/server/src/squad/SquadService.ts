@@ -25,6 +25,7 @@ import {
   type ChallengeView,
   type CodingQuestionView,
   type PitView,
+  type GateView,
   type PowerUpKind,
   type Role,
   type ScheduledChallenge,
@@ -100,6 +101,7 @@ export class SquadService {
   private readonly teams = new Map<string, { inventory: Record<PowerUpKind, number>; waypoint: WaypointId | null; credits: number }>();
   /** Pit view provider (PitService), filtered per role. */
   pitView: (teamId: string, role: Role) => PitView | null = () => null;
+  gateView: (teamId: string, role: Role) => GateView | null = () => null;
   private readonly scores = new Map<string, ScoreRow[]>();
   private readonly idem = new Map<string, unknown>();
   private readonly lastStatus = new Map<string, string>();
@@ -627,6 +629,7 @@ export class SquadService {
       score: this.scoreOf(teamId),
       credits: t.credits,
       pit: this.pitView(teamId, role),
+      gate: this.gateView(teamId, role),
     };
   }
 }

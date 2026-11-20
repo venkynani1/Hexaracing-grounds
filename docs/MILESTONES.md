@@ -64,10 +64,12 @@ Status: `apps/server/test/chennai.test.ts` + `apps/web/e2e/lobby.spec.ts` (M5 te
 Status: `apps/server/test/m6.test.ts` + M6 Playwright test pass locally. First GitHub Actions run still to be observed.
 
 ## M7 — Final experience
-- [ ] Gate assessment open to all squads 50:00–55:00; escort transition awards 0 driving points for skipped checkpoints.
-- [ ] Convoy: all 30 real cars placed in convoy slots in the same world; all clients receive the same convoy timeline (timestamps equal).
-- [ ] Offer letters: one PDF per player, contains required fields and the exact disclaimer string.
-- [ ] Championship: totals derived from `scoring_events`; tie-break test cases.
+- [x] Gate assessment open to all squads 50:00–55:00; escort transition awards 0 driving points for skipped checkpoints.
+- [x] Convoy: all 30 real cars placed in convoy slots in the same world; all clients receive the same convoy timeline (timestamps equal).
+- [x] Offer letters: one PDF per player, contains required fields and the exact disclaimer string.
+- [x] Championship: totals derived from `scoring_events`; tie-break test cases.
+
+Status: `apps/server/test/m7.test.ts` + M7 Playwright test pass locally. First GitHub Actions run still to be observed.
 
 ## M8 — Production testing
 - [ ] Load test: 120 connected clients (30 racers + 90 role clients) + host + projector, 60-min fast-forward and a 15-min real-time run: server tick p99 < 10 ms, per-client downstream < 40 KB/s avg, zero disconnects without recovery.

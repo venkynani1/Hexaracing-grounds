@@ -65,7 +65,7 @@ npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-ke
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M6 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M7 (Hexaware Gate assessment + escort transition, Welcome Convoy, championship, offer letters).
+M1–M7 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M8 (production testing: 120-client load, reconnection storm, restart recovery, fairness simulation, security, rehearsal).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -112,3 +112,12 @@ M1–M6 implemented and tested locally (M2's manual phone-FPS check still open) 
 - `WorldSim`: `hold/release` (pit + roadside recovery; inputs still acked, `NetCar.hd` tells prediction), station zones non-collidable, fuel 0 → 8 s recovery (+15%, 50 credits).
 - `apps/server/src/director/` — `Director` applies each beat from `createRng(seed, "beat:<id>")` over bounded options (`packages/shared/src/director.ts`), audit-logs the decision, expires timed effects; `closures.ts` only accepts a closure if every course keeps a route from every node. World state goes to ALL clients as one `{t:'world', state}` (monotonic `rev`).
 - Perf benchmarks live in `*.perf.test.ts` and run isolated (`npm run test:perf`).
+
+## Code map (M7)
+- Driving points: `WorldRoom.flushCheckpoints` → 15 reach + 10 clean per checkpoint; `CheckpointPass.escorted` passes score 0.
+- `WorldSim.startAuto` — server-driven movement along a real-road path (`escort` / `convoy`); `NetCar.au` + `hd` tell clients; non-collidable.
+- `apps/server/src/gate/` — `GateService` (50:00–55:00 tasks, escort request + auto at 51:30, parking, arrivals, assisted entry + convoy at 55:00, reveal at 58:00), `content.ts` (server-only debug/badge tasks), `championship.ts` (standings from `scoring_events` rows + tie-breaks), `letters.ts` (pdf-lib; `OFFER_LETTER_DISCLAIMER`).
+- `packages/shared/src/map/gate.ts` — `gateLayout()` (lot with 30 bays, convoy path on the real final approach), shared by server and client.
+- Routes: `/api/squad/gate/{escort,debug,auth,code}`, `/api/standings`, `/api/offer-letter` (Bearer → PDF), `/api/host/offer-letters`. WS: `{t:'convoy', timeline}`, `{t:'championship', standings}` (one serialized payload to all).
+- Web: `game/Finale.tsx` (every role + projector: real positions from the map channel, cinematic camera, fireworks/confetti, podium, letter download), `pages/Projector.tsx` (`/projector`), gate card in `RoleConsole`, gate HUD in `RacerView`.
+- SECURITY: clients get a derived `worldSeed` (visuals/signals/traffic). `EVENT_SEED` (answers, Director, bluff order) never leaves the server — regression test in `m7.test.ts`.

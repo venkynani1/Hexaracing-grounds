@@ -23,6 +23,7 @@ import {
   type WorldStatus,
   type WorldState,
   TRAFFIC_TYPES,
+  SQUAD_RUBRIC,
   CAR_FLAG_BRAKING,
   CAR_FLAG_GHOST,
 } from '@redline/shared';
@@ -35,6 +36,7 @@ import type { PlayerRow, RegistrationService, TeamRow } from '../services/regist
 import type { SquadService } from '../squad/SquadService';
 import type { Director } from '../director/Director';
 import type { PitService } from '../pit/PitService';
+import type { GateService } from '../gate/GateService';
 
 export interface WorldRoomOptions {
   eventId: string;
@@ -138,6 +140,24 @@ export class WorldRoom {
     this.pit = p;
   }
 
+  gate: GateService | null = null;
+  attachGate(g: GateService) {
+    this.gate = g;
+    g.onConvoy = (timeline) => this.broadcastBound(JSON.stringify({ t: 'convoy', timeline } satisfies ServerMessage));
+    g.onChampionship = (standings, computedAt) => this.broadcastBound(JSON.stringify({ t: 'championship', standings, computedAt } satisfies ServerMessage));
+  }
+
+  /** One serialized message to every bound client (players + hosts): identical payload, identical timestamps. */
+  broadcastBound(data: string) {
+    for (const [ws, ctx] of this.clients) if (ctx.kind !== 'pending' && ws.readyState === ws.OPEN) this.sendRaw(ws, data);
+  }
+
+  /** Late joiners / reconnects get the finale state too. */
+  sendFinaleTo(ws: WebSocket) {
+    if (this.gate?.timeline) this.sendRaw(ws, JSON.stringify({ t: 'convoy', timeline: this.gate.timeline } satisfies ServerMessage));
+    if (this.gate?.standings) this.sendRaw(ws, JSON.stringify({ t: 'championship', standings: this.gate.standings, computedAt: this.gate.standingsAt } satisfies ServerMessage));
+  }
+
   /** ONE global update: the same serialized world state goes to every connected client (players + hosts). */
   broadcastWorldState(state: WorldState) {
     const data = JSON.stringify({ t: 'world', state } satisfies ServerMessage);
@@ -221,6 +241,15 @@ export class WorldRoom {
         .insert(vehicleCheckpoints)
         .values(passes.map((p) => ({ teamId: p.teamId, checkpointId: p.checkpointId, tick: p.tick, elapsedMs, speed: p.speed })))
         .onConflictDoNothing();
+      // DRIVING (DESIGN §8): 15 for reaching a checkpoint under own power + 10 if no ramming penalty since the last one.
+      // Checkpoints passed during the disclosed escort score 0.
+      for (const p of passes) {
+        if (p.escorted || !this.squad) continue;
+        const R = SQUAD_RUBRIC.driving;
+        await this.squad.award(p.teamId, 'DRIVING', R.reach, `checkpoint ${p.index + 1} reached`, 'checkpoint_reach', p.checkpointId);
+        if (p.clean) await this.squad.award(p.teamId, 'DRIVING', R.clean, `checkpoint ${p.index + 1}: clean driving`, 'checkpoint_clean', p.checkpointId);
+      }
+      if (passes.length) this.pushSquad(null);
     } catch (e) {
       console.error('[checkpoints]', e);
     }
@@ -249,6 +278,7 @@ export class WorldRoom {
       this.recordStep(performance.now() - t0, t);
     }
     if (steps > 0 && this.pit) void this.pit.tick().catch((e) => console.error('[pit]', e));
+    if (steps > 0 && this.gate) void this.gate.tickWorld().catch((e) => console.error('[gate]', e));
     this.loopCount++;
     if (this.sim.checkpointPasses.length) void this.flushCheckpoints();
     this.broadcastWorld(steps > 0);
@@ -289,7 +319,8 @@ export class WorldRoom {
       bf: this.sim.activeBuffs(c.teamId).map((b) => [b.kind, b.remainingMs] as [typeof b.kind, number]),
       cs: c.course,
       cp: c.nextCp,
-      hd: !!c.held,
+      hd: !!c.held || !!c.auto,
+      au: c.auto?.kind ?? '',
     };
   }
 
@@ -334,7 +365,8 @@ export class WorldRoom {
     const midFrame = stepped ? tick % INTEREST.midEvery === 0 : true;
     const roleFrame = every(4);
     const hostMapFrame = every(4);
-    const playerMapFrame = every(20);
+    // During the Welcome Convoy every phone renders the parade from the map channel → 5 Hz for players too.
+    const playerMapFrame = this.gate?.timeline ? every(4) : every(20);
     if (!racerFrame && !roleFrame && !hostMapFrame && !playerMapFrame) return;
     const serverTime = this.now();
     const cars = [...this.sim.cars.values()];
@@ -457,6 +489,7 @@ export class WorldRoom {
       if (elapsed >= 0) this.director?.update(elapsed);
     }
     if (this.squad) await this.squad.onTick();
+    if (this.gate && this.clock.started) await this.gate.onTick();
     if (changed) {
       const cause =
         snap.status !== this.lastStatus ? `status:${this.lastStatus}->${snap.status}` : `phase:${this.lastPhase}->${snap.phase}`;
@@ -513,6 +546,7 @@ export class WorldRoom {
     this.clock.start(t);
     await this.spawnCars();
     await this.squad?.activate([...this.sim.cars.keys()]);
+    this.gate?.activate([...this.sim.cars.keys()]);
     const snap = this.clock.snapshot(t);
     await this.persist(snap, 'host:start:countdown');
     await audit(this.dbh.db, this.eventId, 'host', null, 'event.start', { force: !!opts.force, squads: ov.squadCount });

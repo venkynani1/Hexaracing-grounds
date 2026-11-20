@@ -137,8 +137,29 @@ export interface NetCar {
   /** course code (start location) and index of the next checkpoint (== count passed) */
   cs: string;
   cp: number;
-  /** held by the server (in a pit bay / queue, or roadside recovery): client must not predict movement */
+  /** held by the server (in a pit bay / queue, roadside recovery, escort, convoy): client must not predict movement */
   hd: boolean;
+  /** server-driven mode: '' | 'escort' (disclosed assisted transition) | 'convoy' */
+  au: '' | 'escort' | 'convoy';
+}
+
+export interface ConvoyTimeline {
+  /** Identical for every client: LIVE elapsed ms and server wall time when the convoy starts moving. */
+  startsAtElapsedMs: number;
+  startsAtServerTime: number;
+  speed: number;
+  spacing: number;
+  pathLength: number;
+  slots: { cid: number; teamId: string; name: string; order: number; s0: number; assisted: boolean }[];
+}
+
+export interface Standing {
+  rank: number;
+  teamId: string;
+  name: string;
+  total: number;
+  byCategory: Record<string, number>;
+  arrival: string | null;
 }
 
 export const CAR_FLAG_BRAKING = 1;
@@ -215,4 +236,6 @@ export type ServerMessage =
   | MapMessage
   | { t: 'squad'; view: SquadView }
   | { t: 'world'; state: WorldState }
+  | { t: 'convoy'; timeline: ConvoyTimeline }
+  | { t: 'championship'; standings: Standing[]; computedAt: number }
   | { t: 'error'; error: string; message: string };

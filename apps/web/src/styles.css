@@ -195,3 +195,26 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .readings { font-family: ui-monospace, monospace; font-size: 13px; padding-left: 18px; }
 .pit-plan input[type='range'] { flex: 1; margin-left: 10px; }
 .beats { list-style: none; padding: 0; font-size: 13px; color: #c7cddb; }
+
+/* ---------------- M7 ---------------- */
+.gate-hud { position: absolute; left: 50%; transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 300px); background: rgba(8, 10, 14, 0.85); border: 1px solid #ffd34d; color: #ffd34d; border-radius: 12px; padding: 8px 12px; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.banner.escort { border-color: var(--cyan); color: var(--cyan); }
+.finale { position: fixed; inset: 0; background: #000; overflow: hidden; }
+.finale-text { position: absolute; top: 12%; left: 0; right: 0; text-align: center; font-weight: 900; font-size: clamp(22px, 6vw, 56px); letter-spacing: 0.06em; color: #fff; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8); pointer-events: none; line-height: 1.15; }
+.finale-text .welcome { color: #ffd34d; }
+.finale-note { position: absolute; left: 12px; bottom: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.75); }
+.podium { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); width: min(92vw, 520px); background: rgba(8, 10, 14, 0.85); border: 1px solid #ffd34d; border-radius: 14px; padding: 14px; max-height: 45vh; overflow: auto; }
+.podium h2 { margin: 0 0 6px; color: #ffd34d; }
+.podium ol { list-style: none; padding: 0; margin: 0 0 8px; }
+.podium li { display: flex; gap: 8px; padding: 3px 0; }
+.podium li b { margin-left: auto; }
+.podium li.me { color: var(--cyan); }
+.podium .rank { width: 24px; color: var(--muted); }
+.projector { padding: 16px; }
+.proj-clock { font-size: 48px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.proj-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.proj-map canvas { width: 100%; aspect-ratio: 1; background: #0b0d12; border-radius: 12px; }
+.proj-board { list-style: none; padding: 0; font-size: 22px; }
+.proj-board li { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.proj-board li b { margin-left: auto; }
+.proj-announce { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--red); padding: 12px 20px; border-radius: 12px; font-weight: 800; font-size: 20px; }

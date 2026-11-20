@@ -206,6 +206,43 @@ test('M6: Monsoon Protocol reaches every phone and the host in the same update',
   await racer.screenshot({ path: 'test-results/m6-racer-rain.png' });
 });
 
+test('M7: gate for every role → disclosed escort → convoy finale on every phone → podium + PDF letter', async ({ request }) => {
+  const { captain, racer, engineer, deceiver } = squadPages;
+  const warp = (m: number) => request.post(`${SERVER_URL}/api/host/warp`, { headers: { 'x-host-key': HOST_KEY }, data: { toElapsedMs: m * 60_000 } });
+  expect((await warp(50.1)).ok()).toBe(true);
+  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('gate-card')).toBeVisible();
+  await expect(captain.getByTestId('gate-code-input')).toBeVisible();
+  await engineer.getByTestId('gate-debug-Line-2').click();
+  await expect(engineer.getByTestId('gate-digit')).toContainText(/\d/);
+  await deceiver.getByTestId('gate-badge-0').click();
+  await expect(deceiver.getByTestId('gate-digit')).toContainText(/\d/);
+  // Racer is still on the road: request the disclosed escort.
+  await racer.getByTestId('racer-escort').click();
+  await expect(racer.getByTestId('escort-banner')).toContainText('Skipped checkpoints score 0');
+  await racer.screenshot({ path: 'test-results/m7-escort.png' });
+
+  // 55:00 — every phone (all four roles) shows the same Welcome Convoy.
+  expect((await warp(55.05)).ok()).toBe(true);
+  for (const p of [captain, racer, engineer, deceiver]) {
+    await expect(p.getByTestId('finale')).toBeVisible({ timeout: 20_000 });
+    await expect(p.getByTestId('finale')).toContainText(/\d+ SQUADS?\./);
+    await expect(p.getByTestId('finale')).toContainText('WELCOME TO HEXAWARE.');
+  }
+  // 58:00 — championship reveal + commemorative letter download.
+  expect((await warp(58.05)).ok()).toBe(true);
+  for (const p of [captain, racer, engineer, deceiver]) await expect(p.getByTestId('podium')).toBeVisible({ timeout: 20_000 });
+  await expect(captain.getByTestId('my-result')).toContainText('#1');
+  const dl = captain.waitForEvent('download');
+  await captain.getByTestId('download-letter').click();
+  const file = await dl;
+  const path = await file.path();
+  const { readFileSync } = await import('node:fs');
+  const bytes = readFileSync(path!);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(bytes.length).toBeGreaterThan(1000);
+  await captain.screenshot({ path: 'test-results/m7-finale.png' });
+});
+
 test('registration is closed for new squads after START', async ({ browser }) => {
   const p = await newPage(browser);
   await p.goto('/');

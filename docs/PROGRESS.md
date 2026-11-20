@@ -2,6 +2,31 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-20 — Milestone 7: Final experience
+
+### What runs
+- **Driving score** from checkpoints: 15 for reaching each of the 10 under own power + 10 if no ramming penalty since the last one; passes during the escort score 0. Totals now cover all seven categories (max 1,000).
+- **Hexaware Gate (50:00–55:00)**, open to every squad wherever its car is: Racer precision parking in the squad's bay at the gate lot, Engineer debugging (which line has the bug), Deceiver authorization (forged badge by check digit), Captain combined access code (digits revealed as each teammate completes their part). Server-only seeded content.
+- **Disclosed escort**: Racer/Captain request it from 50:00 (auto at 51:30): the car is driven along its own remaining course roads, labelled "ESCORT", time-compressed to ~60 s; skipped checkpoints score 0.
+- **Welcome Convoy (55:00)**: assisted entry for squads not at the gate; all real squad cars placed into convoy slots on the real final approach (leaders first) and driven by the server after a 3 s formation hold. One serialized `convoy` timeline to every client. Every phone, the host and `/projector` show the same 3D convoy (real positions via the map channel at 5 Hz), cinematic camera, fireworks + confetti, a "WELCOME TO HEXAWARE" arch over the road and the four required lines.
+- **Championship (58:00)**: standings computed from `scoring_events` rows in Postgres with the predeclared tie-breaks; broadcast to all; podium on every phone; `/api/standings` live leaderboard; projector page.
+- **Offer letters**: one `offer_letters` row per player at the reveal; PDF on demand (pdf-lib) with participant, team, role, vehicle, achievement, final score, campus arrival status, and the exact stamp `COMMEMORATIVE GAME OFFER LETTER — NOT AN EMPLOYMENT OFFER` (top and bottom). No logos (no approved branding supplied).
+- **Security fix (found while building the projector)**: clients had been sent the EVENT_SEED since M2, which seeds the answer variants and Director decisions. Clients now receive a one-way derived `worldSeed`; regression test added.
+
+### Tested
+- `npm test`: 103 tests + 2 isolated benchmarks. New `m7.test.ts`: two squads — one drives every checkpoint (250 driving points), one drives 3 then escorts (exactly 3 × 25 driving, 0 for the 7 escorted); gate open to both; role checks; parking/debug/auth/code all scored; window closes at 55:00; auto-escort at 51:30; 30 squads → 30 real cars in convoy slots on the path (≥ 9 m apart), identical timeline to racer/role client/host, cars move after the hold, no contacts; championship ordering across every tie-break case (incl. category caps and hash fallback) from DB rows and via `/api/standings`; 58:00 reveal → one letter per player, every PDF contains all fields and the exact disclaimer; event seed never reaches a client.
+- `npm run test:e2e`: 7 tests. New M7: gate cards for all roles at 50:00, Racer requests escort (disclosure banner), at 55:00 all four phones show the finale, at 58:00 podium on all four and the Captain downloads a real PDF.
+
+### Known limitations / open risks
+- Offer-letter PDFs use a standard PDF font: non-Latin characters in names (e.g. Tamil script) are replaced with "?". Embedding a Unicode font (licensed) is a follow-up.
+- Escort speed is strongly time-compressed for far-away squads (up to 600 m/s) — disclosed, but visually abrupt; tune the auto-escort time or target duration after a playtest.
+- Finale visuals are simple (box cars, particle fireworks); no audio yet.
+- Car choice is still fixed to Vortex GT (showroom not built; letters show the actual car).
+- Gate/convoy/championship state lives in memory (DB has every score and letter); restart recovery is M8.
+
+### Next (M8)
+- 120-client load test (30 racers + 90 role clients + host + projector), reconnection storm, server restart from recovery snapshots, 1000-run fairness simulation, security pass, full 60-minute rehearsal on real phones.
+
 ## 2026-11-20 — Milestone 6: Fuel & suspense
 
 ### What runs

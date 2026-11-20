@@ -10,6 +10,7 @@ import {
   type SquadView,
   type WorldState,
   type PitView,
+  type GateView,
 } from '@redline/shared';
 import { api, HttpError, type SubmitResult } from '../lib/api';
 
@@ -63,6 +64,7 @@ export function RoleConsole({ view, token, elapsedMs, world }: { view: SquadView
           {world.fuelPriceMul !== 1 && `⛽ Fuel ×${world.fuelPriceMul}`}
         </div>
       )}
+      {view.gate && view.gate.status !== 'upcoming' && <GateCard gate={view.gate} role={view.role} token={token} />}
       {view.pit && view.pit.stage !== 'done' && <PitCard pit={view.pit} role={view.role} token={token} />}
       {view.role === 'CAPTAIN' && <CaptainPanel view={view} token={token} />}
       {open.length === 0 && <p className="hint">No challenge is open right now. Next: {upcoming[0] ? `${upcoming[0].title} at ${formatClock(upcoming[0].opensAt)}` : '—'}</p>}
@@ -274,6 +276,94 @@ function Bluff({ c, token }: { c: ChallengeView; token: string }) {
       )}
       {msg && <div className="hint">{msg}</div>}
     </div>
+  );
+}
+
+/** Hexaware Gate assessment (50:00–55:00), by role. */
+function GateCard({ gate, role, token }: { gate: GateView; role: SquadView['role']; token: string }) {
+  const { msg, busy, run } = useSubmit();
+  const [code, setCode] = useState('');
+  const open = gate.status === 'open';
+  return (
+    <section className={`challenge ${open ? 'open' : 'closed'}`} data-testid="gate-card">
+      <header>
+        <b>Hexaware Gate assessment</b>
+        <span className="pts">
+          {gate.points.parking + gate.points.debug + gate.points.auth + gate.points.code} / 100
+        </span>
+      </header>
+      <p className="hint" data-testid="gate-arrival">
+        Car: {gate.arrival === 'driven' ? 'at the gate (own power)' : gate.arrival === 'escort' ? 'at the gate (disclosed escort)' : gate.arrival === 'assisted' ? 'assisted entry' : gate.escorting ? 'ESCORT under way — skipped checkpoints score 0' : 'still on the road'}
+        {gate.parking.points !== null && ` · parking +${gate.parking.points}`}
+      </p>
+      {gate.escortAvailable && (
+        <button className="btn" disabled={busy} onClick={() => run(() => api.squad.gateEscort(token))} data-testid="gate-escort">
+          Request escort to the gate (disclosed; skipped checkpoints score 0)
+        </button>
+      )}
+      <div className="clue" data-testid="gate-digit">
+        <span className="eyebrow">Access digit #{gate.myDigit.index}</span>
+        <div>{gate.myDigit.digit !== null ? <b>{gate.myDigit.digit}</b> : gate.myDigit.hint} {gate.myDigit.digit !== null && role !== 'CAPTAIN' && '— tell your Captain'}</div>
+      </div>
+      {role === 'ENGINEER' && gate.debug && (
+        <div>
+          <p>{gate.debug.prompt}</p>
+          <pre className="code">{gate.debug.lines.join('\n')}</pre>
+          {gate.debug.chosen === null && open ? (
+            <div className="opts wrap">
+              {gate.debug.options.map((o) => (
+                <button key={o} className="btn opt" disabled={busy} onClick={() => run(() => api.squad.gateDebug(token, o))} data-testid={`gate-debug-${o.replace(' ', '-')}`}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="hint">Submitted: {gate.debug.chosen} {gate.points.debug ? '✓' : ''}</p>
+          )}
+        </div>
+      )}
+      {role === 'DECEIVER' && gate.auth && (
+        <div>
+          <p>{gate.auth.prompt}</p>
+          {gate.auth.chosen === null && open ? (
+            <div className="opts">
+              {gate.auth.badges.map((b, i) => (
+                <button key={b} className="btn opt mono" disabled={busy} onClick={() => run(() => api.squad.gateAuth(token, i))} data-testid={`gate-badge-${i}`}>
+                  {b}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="hint">Flagged: {gate.auth.chosen !== null ? gate.auth.badges[gate.auth.chosen] : '—'} {gate.points.auth ? '✓' : ''}</p>
+          )}
+        </div>
+      )}
+      {role === 'CAPTAIN' && gate.code && (
+        <div>
+          <p>{gate.code.prompt}</p>
+          <p className="hint">
+            Revealed: {gate.code.revealed.map((r, i) => `#${i + 1} ${r ? '✓' : '…'}`).join('  ')}
+          </p>
+          {open && !gate.code.solved && gate.code.attempts < gate.code.maxAttempts ? (
+            <form
+              className="inline"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(() => api.squad.gateCode(token, code), describeResult);
+              }}
+            >
+              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" placeholder="4 digits" data-testid="gate-code-input" />
+              <button className="btn primary" disabled={busy || code.length !== 4} data-testid="gate-code-submit">
+                Open the gate
+              </button>
+            </form>
+          ) : (
+            <p className="hint">{gate.code.solved ? `Gate opened ✓ +${gate.points.code}` : 'No attempts left'}</p>
+          )}
+        </div>
+      )}
+      {msg && <div className="hint" data-testid="gate-msg">{msg}</div>}
+    </section>
   );
 }
 

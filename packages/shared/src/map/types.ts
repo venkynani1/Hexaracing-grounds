@@ -3,6 +3,7 @@
  * by tools/mapbuild; the test grid is synthetic. Both decode into the same runtime RoadNetwork.
  */
 import { CLASS_SPEED, type RoadEdge, type RoadNetwork, type RoadNode } from '../sim/road';
+import { gateLayout } from './gate';
 
 export interface StartLocationDef {
   code: string;
@@ -191,7 +192,8 @@ export function decodeMap(j: MapJson): WorldMap {
   };
 }
 
-/** Areas no procedural building may occupy (station pads). */
-export function stationExclusions(map: { stations: StationDef[] }) {
-  return map.stations.map((s) => ({ x: s.x, z: s.z, r: s.radius + 12 }));
+/** Areas no procedural building may occupy: station pads and the gate parking lot. */
+export function stationExclusions(map: WorldMap) {
+  const lot = gateLayout(map).lot;
+  return [...map.stations.map((s) => ({ x: s.x, z: s.z, r: s.radius + 12 })), { x: lot.x, z: lot.z, r: lot.r + 6 }];
 }

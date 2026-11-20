@@ -75,7 +75,7 @@ export function Host() {
     <main className="page wide">
       <header className="topbar">
         <Brand small />
-        <span className="eyebrow">Host control center</span>
+        <span className="eyebrow">Host control center · <a href="/projector" target="_blank" rel="noreferrer">Projector ↗</a></span>
         <span className={`conn conn-${status}`}>{status === 'open' ? 'Live link' : 'Reconnecting…'}</span>
       </header>
       {!ov ? (

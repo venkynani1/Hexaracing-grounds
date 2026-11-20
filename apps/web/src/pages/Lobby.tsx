@@ -11,6 +11,8 @@ import {
   type WorldInfo,
   type SquadView,
   type WorldState,
+  type ConvoyTimeline,
+  type Standing,
 } from '@redline/shared';
 import { RoleConsole } from './RoleConsole';
 import { StartPicker } from './StartPicker';
@@ -24,6 +26,7 @@ import { Brand, ClockPanel, Qr, useLiveClock } from '../components';
 
 // The 3D client is a separate chunk: lobby phones don't download Babylon until they need it.
 const RacerView = lazy(() => import('../game/RacerView'));
+const Finale = lazy(() => import('../game/Finale'));
 
 export function Lobby() {
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -33,6 +36,8 @@ export function Lobby() {
   const [world, setWorld] = useState<WorldInfo | null>(null);
   const [squad, setSquad] = useState<SquadView | null>(null);
   const [worldState, setWorldState] = useState<WorldState | null>(null);
+  const [timeline, setTimeline] = useState<ConvoyTimeline | null>(null);
+  const [standings, setStandings] = useState<Standing[] | null>(null);
   const [telemetry, setTelemetry] = useState<{ car: NetCar; released: boolean } | null>(null);
   const snapListeners = useRef(new Set<(s: WorldFeed) => void>());
   const subscribe = useCallback((fn: (s: WorldFeed) => void) => {
@@ -79,6 +84,8 @@ export function Lobby() {
       setWorld(m.world);
     } else if (m.t === 'squad') setSquad(m.view);
     else if (m.t === 'world') setWorldState(m.state);
+    else if (m.t === 'convoy') setTimeline(m.timeline);
+    else if (m.t === 'championship') setStandings(m.standings);
     else if (m.t === 'car') setTelemetry({ car: m.car, released: m.released });
     else if (m.t === 'roster') setRoster(m.roster);
     else if (m.t === 'clock') setClock(m.clock);
@@ -102,10 +109,29 @@ export function Lobby() {
   }
 
   const inWorld = clock && ['COUNTDOWN', 'LIVE', 'PAUSED', 'FINISHED'].includes(clock.status);
+  // Finale (55:00+): EVERY role watches the same convoy + reveal.
+  if (timeline && world && worldMap) {
+    return (
+      <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the finale…</p></main>}>
+        <Finale
+          map={worldMap}
+          seed={world.seed}
+          clock={live}
+          offset={offset}
+          subscribe={subscribe}
+          timeline={timeline}
+          standings={standings}
+          myTeamId={roster.teamId}
+          onDownloadLetter={() => api.downloadLetter(session.sessionToken)}
+        />
+      </Suspense>
+    );
+  }
+
   if (inWorld && me?.role === 'RACER' && world && worldMap) {
     return (
       <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the world…</p></main>}>
-        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} map={worldMap} world={worldState} />
+        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} map={worldMap} world={worldState} token={session.sessionToken} />
       </Suspense>
     );
   }

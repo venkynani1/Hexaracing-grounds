@@ -19,6 +19,7 @@ import {
   stationExclusions,
 } from '@redline/shared';
 import { InputState, type Control } from './input';
+import { api } from '../lib/api';
 import { drawMap, type MapDot } from './minimap';
 import { GameScene, type CameraMode, type Quality } from './scene';
 
@@ -35,6 +36,7 @@ export interface RacerViewProps {
   squad: SquadView | null;
   map: WorldMap;
   world: WorldState | null;
+  token: string;
 }
 
 interface Hud {
@@ -60,6 +62,7 @@ interface Hud {
   cpAngle: number | null;
   cpDist: number;
   cells: number;
+  bayDist: number;
   stName: string;
   stDist: number;
   stAngle: number;
@@ -233,7 +236,8 @@ export default function RacerView(props: RacerViewProps) {
               const d = Math.hypot(st.x - pose.x, st.z - pose.z);
               if (!best || d < best.d) best = { name: st.name, d, a: Math.atan2(st.x - pose.x, st.z - pose.z) - pose.heading };
             }
-            return { stName: best?.name ?? '', stDist: best?.d ?? 0, stAngle: best?.a ?? 0, held: !!lastMe?.hd };
+            const g = propsRef.current.squad?.gate;
+            return { stName: best?.name ?? '', stDist: best?.d ?? 0, stAngle: best?.a ?? 0, held: !!lastMe?.hd, bayDist: g ? Math.hypot(g.parking.x - pose.x, g.parking.z - pose.z) : 0 };
           })(),
         });
       }
@@ -312,6 +316,7 @@ export default function RacerView(props: RacerViewProps) {
       {clock?.status === 'PAUSED' && <div className="banner">Paused by host</div>}
       <Announcement world={props.world} elapsedMs={clock?.elapsedMs ?? 0} />
       {props.squad?.pit && props.squad.pit.stage !== 'done' && <PitHud pit={props.squad.pit} />}
+      {props.squad?.gate && props.squad.gate.status === 'open' && <GateHud gate={props.squad.gate} send={props.send} token={props.token} hud={hud} />}
       {hud && !props.squad?.pit?.stage?.match(/queued|in_bay|servicing/) && hud.fuel < 35 && hud.stName && (
         <div className="fuel-hint" data-testid="fuel-hint">
           <span className="wp-arrow" style={{ transform: `rotate(${hud.stAngle}rad)` }}>▲</span>
@@ -407,6 +412,31 @@ function RacerSquadHud({ squad, hud, map }: { squad: SquadView; hud: Hud | null;
       {squad.buffs.map((b) => (
         <span key={b.kind} className="chip">⚡ {b.kind.replace('_', ' ')}</span>
       ))}
+    </div>
+  );
+}
+
+/** Racer's slice of the gate: escort request, disclosed escort banner, parking-bay guidance. */
+function GateHud({ gate, token, hud }: { gate: import('@redline/shared').GateView; send: RacerViewProps['send']; token: string; hud: Hud | null }) {
+  const [msg, setMsg] = useState('');
+  if (gate.escorting) return <div className="banner escort" data-testid="escort-banner">ESCORT — disclosed, time-compressed transfer along your course roads. Skipped checkpoints score 0.</div>;
+  return (
+    <div className="gate-hud" data-testid="gate-hud">
+      {gate.arrival ? (
+        <span>
+          Park in bay {gate.parking.spot} {gate.parking.points !== null ? `✓ +${gate.parking.points}` : hud ? `· ${Math.round(hud.bayDist)} m` : ''}
+        </span>
+      ) : (
+        <button
+          className="btn primary"
+          onClick={() => api.squad.gateEscort(token).then(() => setMsg('Escort requested'), (e) => setMsg(e.message))}
+          data-testid="racer-escort"
+        >
+          Request escort to the gate
+        </button>
+      )}
+      {gate.myDigit.digit !== null && <span> · Access digit #1: <b>{gate.myDigit.digit}</b></span>}
+      {msg && <span className="hint"> {msg}</span>}
     </div>
   );
 }

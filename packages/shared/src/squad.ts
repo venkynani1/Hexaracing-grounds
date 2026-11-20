@@ -44,6 +44,11 @@ export const SQUAD_RUBRIC = {
   /** Per service window, first completed stop: FUEL_MANAGEMENT 25 (correct diagnosis) or 10; CAPTAIN_STRATEGY 25 if the
    *  confirmed plan covers the diagnosed system AND the Deceiver flagged the false report. */
   pit: { fuel: 25, fuelWrong: 10, strategy: 25 },
+  /** Per checkpoint (10 per course): reached under own power 15, clean (no ramming penalty since the previous one) 10.
+   *  Checkpoints passed during the disclosed escort score 0. */
+  driving: { reach: 15, clean: 10 },
+  /** Hexaware Gate 50:00–55:00: four tasks × 25. Access code by attempt 25/15/5. */
+  gate: { parking: 25, debug: 25, auth: 25, code: [25, 15, 5] as readonly number[] },
 } as const;
 
 /** Max points per category reachable from the schedule above (checked against caps in tests). */
@@ -56,6 +61,8 @@ export function rubricMaxima(): Partial<Record<ScoringCategory, number>> {
     if (c.kind === 'bluff') add('DECEPTION', SQUAD_RUBRIC.bluff.detect + SQUAD_RUBRIC.bluff.maxFooled);
     if (c.kind === 'navigation') add('CAPTAIN_STRATEGY', SQUAD_RUBRIC.navigation.firstTry);
   }
+  add('DRIVING', 10 * (SQUAD_RUBRIC.driving.reach + SQUAD_RUBRIC.driving.clean));
+  add('HEXAWARE_GATE', SQUAD_RUBRIC.gate.parking + SQUAD_RUBRIC.gate.debug + SQUAD_RUBRIC.gate.auth + SQUAD_RUBRIC.gate.code[0]!);
   // Pit stops: one scored stop per service window.
   add('FUEL_MANAGEMENT', SQUAD_RUBRIC.pit.fuel * 2);
   add('CAPTAIN_STRATEGY', SQUAD_RUBRIC.pit.strategy * 2);
@@ -183,6 +190,25 @@ export interface PitView {
   result: { diagnosisCorrect: boolean | null; falseSpotted: boolean | null; applied: PitPlan | null; cost: number } | null;
 }
 
+export type ArrivalMode = 'driven' | 'escort' | 'assisted';
+
+export interface GateView {
+  status: 'upcoming' | 'open' | 'closed';
+  arrival: ArrivalMode | null;
+  escortAvailable: boolean;
+  escorting: boolean;
+  parking: { spot: number; x: number; z: number; heading: number; points: number | null };
+  /** Engineer only */
+  debug?: { prompt: string; lines: string[]; options: string[]; chosen: string | null };
+  /** Deceiver only */
+  auth?: { prompt: string; badges: string[]; chosen: number | null };
+  /** This player's own access digit, once revealed (Racer: on arrival; Engineer/Deceiver: after their task; Captain: own clue). */
+  myDigit: { index: number; digit: number | null; hint: string };
+  /** Captain only */
+  code?: { prompt: string; revealed: boolean[]; attempts: number; maxAttempts: number; solved: boolean };
+  points: { parking: number; debug: number; auth: number; code: number };
+}
+
 export interface SquadView {
   teamId: string;
   role: Role;
@@ -197,4 +223,5 @@ export interface SquadView {
   score: { total: number; byCategory: Record<ScoringCategory, number> };
   credits: number;
   pit: PitView | null;
+  gate: GateView | null;
 }

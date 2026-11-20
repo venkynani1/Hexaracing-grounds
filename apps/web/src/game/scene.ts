@@ -38,6 +38,7 @@ import {
   type WorldMap,
   type Closure,
   stationExclusions,
+  gateLayout,
 } from '@redline/shared';
 
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
@@ -160,6 +161,7 @@ export class GameScene {
     this.buildGround();
     this.buildTrafficTemplates();
     this.buildStations(map);
+    this.buildGate(map);
     this.buildRain();
   }
 
@@ -264,15 +266,15 @@ export class GameScene {
       const e = net.edges[id]!;
       const a = net.nodes[e.a]!;
       const b = net.nodes[e.b]!;
-      quad(a.x, a.z, b.x, b.z, e.halfWidth, 0.05 + (e.cls <= 1 ? 0.01 : 0));
+      quad(a.x, a.z, b.x, b.z, e.halfWidth, 0.12 + (e.cls <= 1 ? 0.01 : 0));
     }
     for (const nid of nodes) {
       const n = net.nodes[nid]!;
       const r = Math.max(n.radius, net.out[nid]!.length ? maxHalfWidth(net, nid) : 0);
       if (r <= 0) continue;
       const o = pos.length / 3;
-      pos.push(n.x, 0.055, n.z);
-      for (let i = 0; i < 8; i++) pos.push(n.x + Math.sin((i * Math.PI) / 4) * r, 0.055, n.z + Math.cos((i * Math.PI) / 4) * r);
+      pos.push(n.x, 0.125, n.z);
+      for (let i = 0; i < 8; i++) pos.push(n.x + Math.sin((i * Math.PI) / 4) * r, 0.125, n.z + Math.cos((i * Math.PI) / 4) * r);
       for (let i = 0; i < 8; i++) idx.push(o, o + 1 + i, o + 1 + ((i + 1) % 8));
     }
     if (idx.length) {
@@ -298,7 +300,7 @@ export class GameScene {
       const q = Quaternion.RotationAxis(Vector3.Up(), h);
       for (let s0 = 6; s0 < e.length - 6; s0 += 9) {
         const c = lanePoint(net, id * 2, -0.5, s0);
-        Matrix.Compose(new Vector3(1, 1, 1), q, new Vector3(c.x, 0.08, c.z)).asArray().forEach((v) => mats.push(v));
+        Matrix.Compose(new Vector3(1, 1, 1), q, new Vector3(c.x, 0.15, c.z)).asArray().forEach((v) => mats.push(v));
       }
     }
     if (mats.length) {
@@ -394,6 +396,122 @@ export class GameScene {
         m.material = this.paint;
       }
     }
+  }
+
+  /** Hexaware gate: an original arch over the final approach (plain text, no logo) + the parking lot with 30 bays. */
+  private buildGate(map: WorldMap) {
+    const lay = gateLayout(map);
+    const lot = MeshBuilder.CreateGround('gate-lot', { width: lay.lot.r * 2, height: lay.lot.r * 2 }, this.scene);
+    lot.position.set(lay.lot.x, 0.07, lay.lot.z);
+    lot.rotation.y = lay.heading;
+    lot.material = this.mat('lotMat', new Color3(0.3, 0.31, 0.34), 0.1);
+    lay.spots.forEach((sp, i) => {
+      const m = MeshBuilder.CreateBox(`bay-${i}`, { width: 2.6, depth: 5.2, height: 0.02 }, this.scene);
+      m.position.set(sp.x, 0.1, sp.z);
+      m.rotation.y = sp.heading;
+      m.material = this.paint;
+    });
+    const fx = Math.sin(lay.heading);
+    const fz = Math.cos(lay.heading);
+    const gold = this.mat('gateMat', new Color3(0.95, 0.75, 0.2), 0.4, new Color3(0.25, 0.18, 0.02));
+    for (const side of [-1, 1]) {
+      const p = MeshBuilder.CreateBox('gate-pillar', { width: 1.2, depth: 1.2, height: 9 }, this.scene);
+      p.position.set(lay.gate.x - fz * 11 * side, 4.5, lay.gate.z + fx * 11 * side);
+      p.material = gold;
+    }
+    const beam = MeshBuilder.CreatePlane('gate-beam', { width: 23, height: 2.2 }, this.scene);
+    beam.position.set(lay.gate.x, 9.4, lay.gate.z);
+    beam.rotation.y = lay.heading + Math.PI;
+    const tex = new DynamicTexture('gate-text', { width: 1024, height: 96 }, this.scene, false);
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.fillStyle = '#0b0d12';
+    ctx.fillRect(0, 0, 1024, 96);
+    ctx.font = 'bold 60px system-ui, sans-serif';
+    ctx.fillStyle = '#ffd34d';
+    ctx.textAlign = 'center';
+    ctx.fillText('WELCOME TO HEXAWARE', 512, 70);
+    tex.update();
+    const bm = new StandardMaterial('gate-beam-mat', this.scene);
+    bm.diffuseTexture = tex;
+    bm.emissiveColor = new Color3(1, 1, 1);
+    bm.backFaceCulling = false;
+    beam.material = bm;
+    this.gatePos = new Vector3(lay.gate.x, 0, lay.gate.z);
+  }
+
+  private gatePos = Vector3.Zero();
+  private fireworks: ParticleSystem[] = [];
+
+  /** Finale: orbiting aerial camera around a point (convoy lead), with fireworks and confetti over the gate. */
+  cinematic(cx: number, cz: number, t: number) {
+    this.streamCells(cx, cz);
+    const r = 70 + 25 * Math.sin(t * 0.07);
+    const target = new Vector3(cx, 2, cz);
+    this.camPos = new Vector3(cx + Math.cos(t * 0.12) * r, 28 + 10 * Math.sin(t * 0.05), cz + Math.sin(t * 0.12) * r);
+    this.camera.position.copyFrom(this.camPos);
+    this.camera.setTarget(target);
+    this.camera.fov = 0.9;
+    this.camera.minZ = 2; // aerial shot: more depth precision for road vs ground
+  }
+
+  startCelebration() {
+    if (this.fireworks.length) return;
+    const tex = new DynamicTexture('spark', { width: 16, height: 16 }, this.scene, false);
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    const g = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 16, 16);
+    tex.update();
+    tex.hasAlpha = true;
+    const colors: [number, number, number][] = [[1, 0.2, 0.3], [1, 0.8, 0.2], [0.3, 0.8, 1], [0.4, 1, 0.5]];
+    colors.forEach((c, i) => {
+      const ps = new ParticleSystem(`fw-${i}`, 600, this.scene);
+      ps.particleTexture = tex;
+      ps.emitter = this.gatePos.add(new Vector3((i - 1.5) * 18, 40 + i * 4, 10));
+      ps.createSphereEmitter(1);
+      ps.color1 = new Color4(c[0], c[1], c[2], 1);
+      ps.color2 = new Color4(1, 1, 1, 1);
+      ps.colorDead = new Color4(c[0], c[1], c[2], 0);
+      ps.minSize = 0.6;
+      ps.maxSize = 1.4;
+      ps.minLifeTime = 0.8;
+      ps.maxLifeTime = 1.6;
+      ps.minEmitPower = 12;
+      ps.maxEmitPower = 22;
+      ps.gravity = new Vector3(0, -9, 0);
+      ps.manualEmitCount = 0;
+      ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+      ps.start();
+      this.fireworks.push(ps);
+    });
+    // Confetti: slow coloured flakes over the gate.
+    const conf = new ParticleSystem('confetti', 1500, this.scene);
+    conf.particleTexture = tex;
+    conf.emitter = this.gatePos.add(new Vector3(0, 30, 0));
+    conf.minEmitBox = new Vector3(-50, 0, -50);
+    conf.maxEmitBox = new Vector3(50, 0, 50);
+    conf.color1 = new Color4(1, 0.3, 0.4, 1);
+    conf.color2 = new Color4(0.3, 0.8, 1, 1);
+    conf.minSize = 0.3;
+    conf.maxSize = 0.6;
+    conf.minLifeTime = 4;
+    conf.maxLifeTime = 6;
+    conf.emitRate = 250;
+    conf.gravity = new Vector3(0, -2, 0);
+    conf.direction1 = new Vector3(-1, -1, -1);
+    conf.direction2 = new Vector3(1, -1, 1);
+    conf.start();
+    this.fireworks.push(conf);
+  }
+
+  /** Bursts every ~1.2 s per launcher. */
+  tickCelebration(t: number) {
+    this.fireworks.forEach((ps, i) => {
+      if (ps.name === 'confetti') return;
+      if (Math.floor(t * 0.8 + i * 0.37) !== Math.floor((t - 0.05) * 0.8 + i * 0.37)) ps.manualEmitCount = 300;
+    });
   }
 
   private barrierMeshes: Mesh[] = [];
@@ -547,6 +665,7 @@ export class GameScene {
   }
 
   updateCamera(p: CarPose, speed: number, dt: number) {
+    this.camera.minZ = 0.3;
     this.streamCells(p.x, p.z);
     if (this.rainPs) this.rainPs.emitter = new Vector3(p.x, 0, p.z);
     const fx = Math.sin(p.heading);

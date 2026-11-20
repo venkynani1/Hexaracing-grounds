@@ -19,6 +19,11 @@ import { WorldSim } from './world/WorldSim';
 import { SquadService, type Actor } from './squad/SquadService';
 import { PitService } from './pit/PitService';
 import { Director } from './director/Director';
+import { GateService } from './gate/GateService';
+import { computeStandings } from './gate/championship';
+import { buildOfferLetterPdf } from './gate/letters';
+import { offerLetters, players as playersT, teams as teamsT } from '@redline/db';
+import { VEHICLES, ROLE_LABEL, hash32 } from '@redline/shared';
 import { audit } from './services/audit';
 
 export interface BuiltServer {
@@ -85,7 +90,10 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const { clock, autoPaused } = clockFromEventRow(event, now(), config.countdownMs);
   const map: WorldMap = config.map === 'test' ? testMap() : chennaiMap();
   await syncMapToDb(db, event.id, map);
-  const sim = new WorldSim({ seed: String(event.seed), trafficCount: config.trafficCount, map });
+  // SECURITY: the event seed drives secret content (answer variants, Director, bluff order) and never leaves the
+  // server. Clients get a one-way derived WORLD seed for visuals, signals and traffic only.
+  const worldSeed = `w${hash32(`${String(event.seed)}:world:${config.sessionSecret}`).toString(16)}`;
+  const sim = new WorldSim({ seed: worldSeed, trafficCount: config.trafficCount, map });
   const room = WorldRoom.create({ eventId: event.id, eventName: event.name, clock, db, now, sim, releaseAtMs: config.releaseAtMs });
   const signer = new TokenSigner(config.sessionSecret);
   const registration = new RegistrationService(db.db, signer, event.id, room.registrationOpen, now);
@@ -107,9 +115,13 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const pit = new PitService(db.db, String(event.seed), sim, squad, () => clock.elapsedMs(now()), () => director.state.fuelPriceMul);
   squad.pitView = (teamId, role) => pit.viewFor(teamId, role);
   room.attachPit(pit);
+  const gate = new GateService(db.db, event.id, String(event.seed), sim, squad, () => clock.elapsedMs(now()), now);
+  squad.gateView = (teamId, role) => gate.viewFor(teamId, role);
+  room.attachGate(gate);
   if (clock.started) {
     await room.spawnCars();
     await squad.activate([...sim.cars.keys()]);
+    gate.activate([...sim.cars.keys()]);
   }
   if (autoPaused) await audit(db.db, event.id, 'system', null, 'event.recovered_paused', { at: now() });
 
@@ -148,7 +160,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
 
   /* ---------- public ---------- */
   app.get('/api/health', async () => ({ ok: true, db: await db.ping(), roomId: room.roomId, clients: room.clients.size }));
-  app.get('/api/event', async () => ({ eventName: room.eventName, clock: room.clockState(), registrationOpen: room.registrationOpen(), map: map.id }));
+  app.get('/api/event', async () => ({ eventName: room.eventName, clock: room.clockState(), registrationOpen: room.registrationOpen(), map: map.id, worldSeed }));
 
   /* ---------- registration ---------- */
   app.post('/api/squads', { preHandler: limitJoin }, async (req, reply) => {
@@ -230,7 +242,44 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   app.post('/api/squad/pit/diagnose', async (req) => pit.diagnose(await actor(req), body(req).answer));
   app.post('/api/squad/pit/verify', async (req) => pit.verify(await actor(req), body(req).index));
   app.post('/api/squad/pit/confirm', async (req) => pit.confirm(await actor(req)));
+  app.post('/api/squad/gate/escort', async (req) => gate.requestEscort(await actor(req)));
+  app.post('/api/squad/gate/debug', async (req) => gate.debug(await actor(req), body(req).answer));
+  app.post('/api/squad/gate/auth', async (req) => gate.auth(await actor(req), body(req).index));
+  app.post('/api/squad/gate/code', async (req) => gate.code(await actor(req), body(req).code));
   app.post('/api/squad/bluff/:id/vote', async (req) => squad.bluffVote(await actor(req), param(req, 'id'), body(req).choiceId));
+
+  /* ---------- championship + offer letters (M7) ---------- */
+  // Live standings, always derived from scoring_events rows (final at 58:00).
+  app.get('/api/standings', async () => ({
+    final: !!gate.standings,
+    standings: gate.standings ?? (await computeStandings(db.db, event.id, String(event.seed), (t) => sim.cars.get(t)?.arrival?.mode ?? null)),
+  }));
+  app.get('/api/offer-letter', async (req, reply) => {
+    const s = await requirePlayer(req);
+    const [row] = await db.db
+      .select({ letter: offerLetters, player: playersT, team: teamsT })
+      .from(offerLetters)
+      .innerJoin(playersT, eq(offerLetters.playerId, playersT.id))
+      .innerJoin(teamsT, eq(playersT.teamId, teamsT.id))
+      .where(eq(offerLetters.playerId, s.pid));
+    if (!row) throw new ApiError(404, 'NOT_READY', 'Offer letters are issued at the championship reveal (58:00)');
+    const car = sim.cars.get(row.team.id);
+    const pdf = await buildOfferLetterPdf({
+      participant: row.player.displayName,
+      team: row.team.name,
+      role: ROLE_LABEL[row.player.role],
+      vehicle: car?.params.name ?? VEHICLES.vortex_gt.name,
+      achievement: row.letter.achievement,
+      finalScore: row.letter.finalScore,
+      arrivalStatus: row.letter.arrivalStatus,
+      eventName: event.name,
+      date: row.letter.generatedAt.toISOString().slice(0, 10),
+    });
+    return reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="code-redline-letter.pdf"`).send(Buffer.from(pdf));
+  });
+  app.get('/api/host/offer-letters', { preHandler: requireHost }, async () =>
+    db.db.select({ playerId: offerLetters.playerId, achievement: offerLetters.achievement, finalScore: offerLetters.finalScore, arrivalStatus: offerLetters.arrivalStatus }).from(offerLetters),
+  );
 
   /* ---------- host ---------- */
   app.get('/api/host/overview', { preHandler: requireHost }, async () => room.overview());
@@ -317,6 +366,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
           });
           room.sendSquadTo(ws);
           room.sendWorldStateTo(ws);
+          room.sendFinaleTo(ws);
           await room.broadcastRoster(s.tid);
         } else if (msg.t === 'host_hello') {
           if (typeof msg.hostKey !== 'string' || !safeEqual(msg.hostKey, config.hostAdminKey)) {
@@ -327,6 +377,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
           clearTimeout(helloTimeout);
           send(ws, { t: 'welcome', kind: 'host', roomId: room.roomId, overview: await room.overview() });
           room.sendWorldStateTo(ws);
+          room.sendFinaleTo(ws);
         }
       } catch (e) {
         const err = e instanceof ApiError ? e : new ApiError(500, 'INTERNAL', 'Internal error');

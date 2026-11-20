@@ -88,6 +88,12 @@ export interface SimCar {
   buffs: Map<BuffKind, number>;
   /** Held by the server (pit bay / queue, roadside recovery): no driving; inputs are still acknowledged. */
   held: { x: number; z: number; heading: number; reason: 'pit' | 'recovery'; until?: number } | null;
+  /** Server-driven movement along a real-road path (disclosed escort, Welcome Convoy). */
+  auto: { kind: 'escort' | 'convoy'; path: { x: number; z: number; d: number }[]; s: number; speed: number; startAtSimMs: number } | null;
+  /** How the car reached the gate (null = not yet). */
+  arrival: { mode: 'driven' | 'escort' | 'assisted'; tick: number } | null;
+  /** Tick of the last checkpoint pass (for the clean-driving bonus). */
+  lastPassTick: number;
 }
 
 export interface CheckpointPass {
@@ -96,6 +102,10 @@ export interface CheckpointPass {
   index: number;
   tick: number;
   speed: number;
+  /** passed during the disclosed escort → scores 0 */
+  escorted: boolean;
+  /** no ramming penalty since the previous checkpoint */
+  clean: boolean;
 }
 
 export interface Penalty {
@@ -129,6 +139,8 @@ export class WorldSim {
   readonly buildings: Building[];
   /** Checkpoint passes since the last drain (WorldRoom persists them). */
   checkpointPasses: CheckpointPass[] = [];
+  /** Cars that reached the gate (GateService drains these). */
+  arrivals: { teamId: string; mode: 'driven' | 'escort'; tick: number }[] = [];
   /** Cars that pulled into a station zone (PitService drains these). */
   pitArrivals: { teamId: string; stationId: string }[] = [];
   /** Completed roadside recoveries (PitService charges credits). */
@@ -215,6 +227,9 @@ export class WorldSim {
         inputBudget: INPUT_BUDGET_MAX,
         buffs: new Map(),
         held: null,
+        auto: null,
+        arrival: null,
+        lastPassTick: 0,
       });
     });
   }
@@ -232,6 +247,40 @@ export class WorldSim {
   }
 
   /* ---------- holds (pit / recovery), stations, closures ---------- */
+
+  /** Start server-driven movement along `path` from distance s0 (escort: from where the car is; convoy: its slot). */
+  startAuto(teamId: string, kind: 'escort' | 'convoy', path: { x: number; z: number; d: number }[], s0: number, speed: number, startAtSimMs = this.simMs) {
+    const car = this.cars.get(teamId);
+    if (!car) return;
+    car.held = null;
+    car.auto = { kind, path, s: s0, speed, startAtSimMs };
+    this.placeOnPath(car);
+  }
+
+  stopAuto(teamId: string) {
+    const car = this.cars.get(teamId);
+    if (car) car.auto = null;
+  }
+
+  private placeOnPath(car: SimCar) {
+    const a = car.auto!;
+    const p = a.path;
+    let i = 1;
+    while (i < p.length - 1 && p[i]!.d < a.s) i++;
+    const A = p[i - 1]!;
+    const B = p[i]!;
+    const t = Math.max(0, Math.min(1, (a.s - A.d) / Math.max(1e-6, B.d - A.d)));
+    const heading = Math.atan2(B.x - A.x, B.z - A.z);
+    const moving = this.simMs >= a.startAtSimMs && a.s < p[p.length - 1]!.d;
+    car.state = {
+      ...car.state,
+      x: A.x + (B.x - A.x) * t,
+      z: A.z + (B.z - A.z) * t,
+      heading,
+      vx: moving ? Math.sin(heading) * a.speed : 0,
+      vz: moving ? Math.cos(heading) * a.speed : 0,
+    };
+  }
 
   hold(teamId: string, at: { x: number; z: number; heading: number }, reason: 'pit' | 'recovery', until?: number) {
     const car = this.cars.get(teamId);
@@ -318,6 +367,28 @@ export class WorldSim {
     this.contacts = [];
     for (const car of this.cars.values()) {
       car.inputBudget = Math.min(INPUT_BUDGET_MAX, car.inputBudget + 1);
+      if (car.auto) {
+        while (car.queue.length) {
+          const e = car.queue.shift()!;
+          car.ackSeq = e.seq;
+          car.lastInput = e.input;
+        }
+        car.ticksSinceInput = 0;
+        const a = car.auto;
+        const end = a.path[a.path.length - 1]!.d;
+        if (this.simMs >= a.startAtSimMs) a.s = Math.min(end, a.s + a.speed * dt);
+        this.placeOnPath(car);
+        this.checkCheckpoint(car);
+        if (a.kind === 'escort' && a.s >= end) {
+          car.auto = null;
+          car.state = { ...car.state, vx: 0, vz: 0 };
+          if (!car.arrival) {
+            car.arrival = { mode: 'escort', tick: this.tick };
+            this.arrivals.push({ teamId: car.teamId, mode: 'escort', tick: this.tick });
+          }
+        }
+        continue;
+      }
       if (car.held) {
         // Held cars don't drive; their inputs are acknowledged (client knows via `hd`) so prediction stays exact.
         while (car.queue.length) {
@@ -428,8 +499,16 @@ export class WorldSim {
     const cp = course?.checkpoints[car.nextCp];
     if (!cp) return;
     if (Math.hypot(car.state.x - cp.x, car.state.z - cp.z) > CHECKPOINT_RADIUS) return;
-    this.checkpointPasses.push({ teamId: car.teamId, checkpointId: cp.id, index: car.nextCp, tick: this.tick, speed: Math.hypot(car.state.vx, car.state.vz) });
+    const escorted = car.auto?.kind === 'escort';
+    const clean = !this.penalties.some((p) => p.teamId === car.teamId && p.tick > car.lastPassTick);
+    this.checkpointPasses.push({ teamId: car.teamId, checkpointId: cp.id, index: car.nextCp, tick: this.tick, speed: Math.hypot(car.state.vx, car.state.vz), escorted, clean });
+    car.lastPassTick = this.tick;
     car.nextCp++;
+    // Final checkpoint = the Hexaware gate.
+    if (car.nextCp === course!.checkpoints.length && !car.arrival && !escorted) {
+      car.arrival = { mode: 'driven', tick: this.tick };
+      this.arrivals.push({ teamId: car.teamId, mode: 'driven', tick: this.tick });
+    }
   }
 
   /** Squad car vs squad car: equal-mass, symmetric, server-resolved. Anti-ramming arrives in M3. */
@@ -441,8 +520,8 @@ export class WorldSim {
         const a = list[i]!;
         const b = list[j]!;
         if (this.isGhost(a) || this.isGhost(b)) continue;
-        // Cars inside a station (or held) never collide: service can't be blocked.
-        if (a.held || b.held || this.stationAt(a.state.x, a.state.z, 6) || this.stationAt(b.state.x, b.state.z, 6)) continue;
+        // Cars inside a station (or held / server-driven) never collide: service and the convoy can't be blocked.
+        if (a.held || b.held || a.auto || b.auto || this.stationAt(a.state.x, a.state.z, 6) || this.stationAt(b.state.x, b.state.z, 6)) continue;
         const dx = b.state.x - a.state.x;
         const dz = b.state.z - a.state.z;
         const d = Math.hypot(dx, dz);
@@ -498,7 +577,7 @@ export class WorldSim {
   /** Squad car vs traffic: traffic is kinematic (it yields via its own logic); the car bounces. */
   private resolveTrafficCollisions(poses: { x: number; z: number; type: keyof typeof TRAFFIC_TYPES; heading: number; speed: number }[]) {
     for (const car of this.cars.values()) {
-      if (this.isGhost(car) || car.held) continue;
+      if (this.isGhost(car) || car.held || car.auto) continue;
       for (const p of poses) {
         const r = TRAFFIC_TYPES[p.type].length / 2;
         const dx = car.state.x - p.x;

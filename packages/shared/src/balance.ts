@@ -33,6 +33,13 @@ export const BALANCE = {
   },
   /** Roadside recovery when the tank runs dry: never elimination. */
   recovery: { delayMs: 8_000, fuelPct: 15, cost: 50 },
+  /** Disclosed, time-compressed escort (Hexaware Gate transition): the car is driven along its REAL remaining course
+   *  roads at whatever speed delivers it in ~60 s (shown in-game as an escort; skipped checkpoints score 0). */
+  escort: { targetMs: 60_000, minSpeed: 30, maxSpeed: 600, autoAtMs: 51.5 * 60_000 },
+  /** Welcome Convoy: single file on the final approach, server-driven. */
+  convoy: { spacing: 11, speed: 3, approachM: 1100 },
+  /** Precision parking at the gate lot. */
+  parking: { radius: 6, stillMs: 1000 },
   serviceWindows: [
     { id: 'service-1', fromMs: 17 * 60_000, toMs: 24 * 60_000 },
     { id: 'service-2', fromMs: 36 * 60_000, toMs: 41 * 60_000 },
