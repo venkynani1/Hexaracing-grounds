@@ -72,9 +72,13 @@ Status: `apps/server/test/m6.test.ts` + M6 Playwright test pass locally. First G
 Status: `apps/server/test/m7.test.ts` + M7 Playwright test pass locally. First GitHub Actions run still to be observed.
 
 ## M8 — Production testing
-- [ ] Load test: 120 connected clients (30 racers + 90 role clients) + host + projector, 60-min fast-forward and a 15-min real-time run: server tick p99 < 10 ms, per-client downstream < 40 KB/s avg, zero disconnects without recovery.
-- [ ] Reconnection storm: drop 40 clients at once, all rejoin to the same slots within 10 s.
-- [ ] Server restart mid-event: recovers from snapshot, state diff vs. pre-crash within one snapshot interval.
-- [ ] Fairness simulation: 1000 seeded runs × all routes × all cars; max-score reachable for every combination; mean driving score spread across routes < 5%.
-- [ ] Security: replayed input seq rejected, forged session rejected, rate limits hold, no clue leakage, host routes protected.
-- [ ] Full 60-minute rehearsal with real phones on venue Wi-Fi (manual, logged in PROGRESS.md).
+- [x] Load test: 120 connected clients (30 racers + 90 role clients) + host + projector, 60-min fast-forward and a 15-min real-time run: server tick p99 < 10 ms, per-client downstream < 40 KB/s avg, zero disconnects without recovery.
+  - Fast-forward (`load.perf.test.ts`, Chennai, 400 traffic, concurrent submissions at every challenge): tick p99 5.85 ms, downstream avg 8.7 KB/s, 0 disconnects, 30 standings, 120 letters.
+  - Real-time 15 min (CLI, bots in a separate process, same 4-vCPU machine): tick p99 6.75 ms over 17,973 ticks at 20 Hz, downstream avg 5.8 KB/s (racers 10.8, host/projector 12.3), 0 disconnects, 19.9 snaps/s.
+- [x] Reconnection storm: drop 40 clients at once, all rejoin to the same slots within 10 s. (`storm.test.ts`: ~0.4 s.)
+- [x] Server restart mid-event: recovers from snapshot, state diff vs. pre-crash within one snapshot interval. (`restart.test.ts`.)
+- [x] Fairness simulation: 1000 seeded runs × all routes × all cars; max-score reachable for every combination; mean driving score spread across routes < 5%. (`fairness.perf.test.ts`: 28,000/28,000 reachable; typical-player spread 2.41%; cars within ±2%. Timeline model — see PROGRESS.)
+- [x] Security: replayed input seq rejected, forged session rejected, rate limits hold, no clue leakage, host routes protected. (`security.test.ts`.)
+- [ ] Full 60-minute rehearsal with real phones on venue Wi-Fi (manual, logged in PROGRESS.md). **Needs the owner: devices, venue Wi-Fi, a deployed server.** Checklist in `docs/RUNBOOK.md` §6.
+
+Status: all automated M8 items pass locally (`npm test` runs the perf suite isolated after the main suite). First GitHub Actions run still to be observed.

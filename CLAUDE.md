@@ -34,7 +34,7 @@ packages/shared   Protocol, enums, scoring rubric, timeline, RNG, vehicle stats
 packages/db       Drizzle schema, migrations, repositories
 tools/loadtest    120-client headless bot harness
 tools/mapbuild    OSM -> road graph + streaming cells pipeline
-docs/             SPEC, DESIGN, MILESTONES, PROGRESS, RUNBOOK
+docs/             SPEC, DESIGN, MILESTONES, PROGRESS, RUNBOOK, SCORING
 ```
 
 ## Working rules for Claude Code
@@ -65,7 +65,7 @@ npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-ke
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M7 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M8 (production testing: 120-client load, reconnection storm, restart recovery, fairness simulation, security, rehearsal).
+M1–M8 automated acceptance tests pass locally. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -121,3 +121,10 @@ M1–M7 implemented and tested locally (M2's manual phone-FPS check still open) 
 - Routes: `/api/squad/gate/{escort,debug,auth,code}`, `/api/standings`, `/api/offer-letter` (Bearer → PDF), `/api/host/offer-letters`. WS: `{t:'convoy', timeline}`, `{t:'championship', standings}` (one serialized payload to all).
 - Web: `game/Finale.tsx` (every role + projector: real positions from the map channel, cinematic camera, fireworks/confetti, podium, letter download), `pages/Projector.tsx` (`/projector`), gate card in `RoleConsole`, gate HUD in `RacerView`.
 - SECURITY: clients get a derived `worldSeed` (visuals/signals/traffic). `EVENT_SEED` (answers, Director, bluff order) never leaves the server — regression test in `m7.test.ts`.
+
+## Code map (M8)
+- Recovery: `WorldRoom.snapshotNow()` every 10 s + every phase change → `recovery_snapshots` (newest 50); `restoreFrom()` at boot (app.ts) → clock `restorePausedAt` (RECOVERING → PAUSED). Every service has `snapshot()/restore()`; SquadService regenerates content without DB writes and reloads scores from `scoring_events`. Traffic is re-seeded (not restored).
+- Racer (re)bind resets the car's input stream (`WorldSim.resetInputStream`) — reconnects/reloads can drive immediately.
+- Boot warm-up: `WorldSim.prewarm()` (corridor building cells, road index) + `WorldSim.warmJit()` on a throwaway sim.
+- Tests: `restart.test.ts`, `storm.test.ts`, `security.test.ts` (main suite); `load.perf.test.ts`, `fairness.perf.test.ts`, `tick.perf.test.ts` (isolated perf suite). Load CLI: `--roles` adds 3 role clients per squad + host/projector observers.
+- Ops: `docs/RUNBOOK.md`, `apps/server/Dockerfile`, `apps/server/fly.toml.example` (not built in this environment).

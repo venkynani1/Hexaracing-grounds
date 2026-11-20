@@ -2,6 +2,36 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-20 — Milestone 8: Production testing (automated parts)
+
+### What runs
+- **Restart recovery**: whole-world snapshots (cars incl. buffs/arrivals/escort/convoy, challenges + attempts + idempotency, bluffs, credits, pit stops/queues, Director world state + beat log, gate tasks, convoy timeline, standings, clock) every 10 s and on every phase change; on boot the newest snapshot is restored and the event comes back **PAUSED** at the snapshot's elapsed time (downtime not counted); host resumes; phones rejoin.
+- **Bug fixed**: a Racer whose page reloaded/reconnected could never drive again (the server remembered the old input sequence numbers and rejected the new predictor's as replays). Binding a Racer connection now starts a fresh input stream; replay protection still holds within a stream.
+- **Boot warm-up**: course-corridor building cells pre-generated (512 cells, ~0.3 s) and the hot sim path JIT-warmed on a throwaway simulation (~0.2 s) — removes cold-start tick spikes.
+- Squad-view pushes after checkpoint passes are now scoped to the affected squads (was all 120 players).
+- **Ops**: `docs/RUNBOOK.md` (deploy to Vercel + long-running host + Neon, configuration, monitoring, incident playbook, rehearsal checklist, load-test procedure), server `Dockerfile`, `fly.toml.example`.
+
+### Tested (all passing locally)
+- `npm test`: 110 tests + isolated perf suite (4).
+- **Load, fast-forward** (`load.perf.test.ts`): 30 racers driving toward their real checkpoints + 90 role clients + host + projector, whole 60-min timeline on Chennai with 400 traffic agents, concurrent submissions from all 30 squads at coding / four-key / bluff entries+votes / gate tasks, convoy, reveal, 120 letters. Tick p50 2.8 ms, **p99 5.85 ms** (worst 400-tick window 14 ms — GC from the 122 in-process bots), downstream avg **8.7 KB/s** (racers 16.6), **0 disconnects**.
+- **Load, real time 15 min** (CLI; bots in a separate process on the same 4-vCPU box): 122 clients, 1 room, 20 Hz, tick **p99 6.75 ms** over 17,973 ticks, downstream avg **5.8 KB/s** (racers 10.8, host/projector 12.3), **0 disconnects**, 19.9 snaps/s, prediction correction p95 9 mm, no server errors.
+- **Reconnection storm** (`storm.test.ts`): 120 connected, 40 dropped at once (10 whole squads), all rejoin the same player/slot in ~0.4 s.
+- **Restart** (`restart.test.ts`): crash after 5 s past a snapshot; reboot on the same DB restores PAUSED at the snapshot (elapsed, sim tick and car positions exact; pre-crash diff ≤ one 10 s interval), scores, attempts (idempotent replay returns original result), bluff entry, waypoint, buffs; host resumes; Racer rejoins and drives.
+- **Fairness** (`fairness.perf.test.ts`): 1000 seeds × 7 routes × 4 cars = 28,000 combinations; max score reachable in all 28,000; mean driving score spread across routes 0.00 % (reference driver) and **2.41 %** (typical player at 75 % pace); all four cars within ±2 % on every route. *Model, not a full game replay*: shared vehicle model reference times (dry + wet), one 60 s pit stop, each seed's real Route Lockdown closure (true graph detour, applied only if the squad reaches it inside 31–37 min), Traffic Shock road (bounded delay), Monsoon window.
+- **Security** (`security.test.ts`): every `/api/host/*` route (discovered from source) rejects missing/wrong keys and player sessions; forged/tampered/cross-secret/expired sessions rejected on HTTP and WS; replayed and out-of-order input seq never enter the queue; non-racers can't drive; registration 429, squad-action 429, WS flood closes the socket (4008); no clue/answer leakage over full logs of two squads; gate tasks role-filtered.
+- `npm run test:e2e`: 7 tests (unchanged scenarios, still passing).
+
+### Not done — needs the owner
+- **Full 60-minute rehearsal with real phones on venue Wi-Fi** (M8 manual item) and the **phone FPS check** (M2): needs devices, the venue and a deployed server — follow `docs/RUNBOOK.md` §6 and log results here.
+- **First deployment**: Dockerfile / Fly config were not built or deployed from this environment (no container runtime); hosting choice and budget still open.
+- **CI**: the GitHub Actions workflow has never been observed running (no GitHub API access from this session).
+- **Approved Hexaware branding**: none supplied; letters and the gate use plain text only.
+
+### Known limitations / open risks
+- Load numbers are from one 4-vCPU container with bots co-located; real phones on venue Wi-Fi will differ (latency, loss, AP capacity).
+- Traffic agents are re-seeded after a restart (positions not restored).
+- Non-Latin names render as "?" in PDF letters; finale/vehicle visuals are simple; no audio; car selection (showroom) not built.
+
 ## 2026-11-20 — Milestone 7: Final experience
 
 ### What runs
