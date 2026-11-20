@@ -49,6 +49,11 @@ test('M1: scan → create squad → 3 contexts join → all see full lobby → h
     await expect(p.locator('[data-testid="roster"] .dot.on')).toHaveCount(4);
   }
 
+  // M5: the Captain picks a verified start location; every teammate sees the disclosed course.
+  await captain.getByTestId('start-kelambakkam').click();
+  for (const p of pages) await expect(p.getByTestId('start-current')).toContainText('Kelambakkam');
+  await expect(pages[1]!.getByTestId('start-kelambakkam')).toHaveCount(0); // only the Captain can choose
+
   // Host dashboard shows the squad and enables START.
   const host = await newPage(browser);
   await host.goto('/host');
@@ -99,6 +104,20 @@ test('M2: racer view renders the world, FPS > 0, touch input moves the car on th
   await host.getByTestId('host-login').click();
   await expect(host.getByTestId('host-map')).toBeVisible({ timeout: 10_000 });
   await expect(host.getByText(/1 squad cars/)).toBeVisible();
+  await expect(host.getByTestId('host-map-attribution')).toContainText('OpenStreetMap contributors');
+});
+
+test('M5: Chennai course guidance + OSM attribution in-game and in credits', async ({ browser }) => {
+  const p = racerPage;
+  await expect(p.getByTestId('osm-attribution')).toContainText('© OpenStreetMap contributors');
+  await expect(p.getByTestId('osm-attribution')).toContainText('ODbL');
+  await expect(p.getByTestId('checkpoint-guide')).toContainText(/Checkpoint \d+\/10/);
+  await p.screenshot({ path: 'test-results/m5-racer.png' });
+  const c = await (await browser.newContext()).newPage();
+  await c.goto('/credits');
+  await expect(c.getByTestId('credits')).toContainText('© OpenStreetMap contributors');
+  await expect(c.getByTestId('credits')).toContainText('Open Database License (ODbL) 1.0');
+  await expect(c.getByTestId('credits')).toContainText('85% scale');
 });
 
 /** Decode the four private clues exactly as teammates would read them out to their Captain. */
@@ -161,8 +180,8 @@ test('M4: four browser contexts, every role UI active at once during one challen
   for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('squad-score')).toHaveText(/^(75|85|100) pts$/);
 
   // Captain sets a waypoint: the Racer's HUD shows the arrow toward it.
-  await captain.getByTestId('wp-north_gate').click();
-  await expect(racer.getByTestId('racer-waypoint')).toContainText('North Gate');
+  await captain.getByTestId('wp-hexaware').click();
+  await expect(racer.getByTestId('racer-waypoint')).toContainText('Hexaware Gate');
   await racer.screenshot({ path: 'test-results/m4-racer.png' });
   await captain.screenshot({ path: 'test-results/m4-captain.png', fullPage: true });
 });

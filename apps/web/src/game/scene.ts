@@ -15,33 +15,75 @@ import {
   TransformNode,
   UniversalCamera,
   Vector3,
+  VertexData,
   type AbstractMesh,
   type InstancedMesh,
 } from '@babylonjs/core';
 import {
+  BUILDING_CELL,
+  ProceduralBuildings,
   TRAFFIC_TYPES,
   TRAFFIC_TYPE_BY_CODE,
   deHeading,
-  deReverse,
+  deStop,
+  generateBuildings,
   hash32,
   lanePoint,
+  signalGroup,
   signalState,
-  axisOfHeading,
   type Building,
   type RoadNetwork,
   type SignalColor,
+  type WorldMap,
 } from '@redline/shared';
 
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
 export type CameraMode = 'chase' | 'hood' | 'top';
 
 /** Presets change visuals only — never gameplay (SPEC Part 1). */
-const PRESETS: Record<Quality, { minScale: number; fog: number; aa: boolean }> = {
-  low: { minScale: 2, fog: 0.004, aa: false },
-  medium: { minScale: 1.5, fog: 0.0028, aa: false },
-  high: { minScale: 1, fog: 0.002, aa: true },
-  ultra: { minScale: 0.75, fog: 0.0014, aa: true },
+const PRESETS: Record<Quality, { minScale: number; fog: number; aa: boolean; draw: number }> = {
+  low: { minScale: 2, fog: 0.004, aa: false, draw: 400 },
+  medium: { minScale: 1.5, fog: 0.0028, aa: false, draw: 700 },
+  high: { minScale: 1, fog: 0.002, aa: true, draw: 1000 },
+  ultra: { minScale: 0.75, fog: 0.0014, aa: true, draw: 1400 },
 };
+
+const CELL = 400;
+const cellOf = (x: number, z: number) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
+const cellDist = (k: string, cx: number, cz: number) => {
+  const [x, z] = k.split(',').map(Number) as [number, number];
+  return (x - cx) ** 2 + (z - cz) ** 2;
+};
+const incidence = new WeakMap<RoadNetwork, number[][]>();
+function incident(net: RoadNetwork): number[][] {
+  let inc = incidence.get(net);
+  if (!inc) {
+    inc = net.nodes.map(() => []);
+    for (const e of net.edges) inc[e.a]!.push(e.id), inc[e.b]!.push(e.id);
+    incidence.set(net, inc);
+  }
+  return inc;
+}
+function maxHalfWidth(net: RoadNetwork, nid: number) {
+  let m = 0;
+  for (const id of incident(net)[nid]!) m = Math.max(m, net.edges[id]!.halfWidth);
+  return m;
+}
+/** Directed edges that ARRIVE at a node (one-way rules respected). */
+function incomingDes(net: RoadNetwork, nid: number): number[] {
+  const out: number[] = [];
+  for (const id of incident(net)[nid]!) {
+    const e = net.edges[id]!;
+    if (e.b === nid) out.push(id * 2);
+    else if (!e.oneway) out.push(id * 2 + 1);
+  }
+  return out;
+}
+interface SignalCell {
+  heads: { node: number; heading: number; x: number; z: number }[];
+  lamps: Record<SignalColor, { on: Mesh; off: Mesh }>;
+  state: string;
+}
 
 export interface CarPose {
   x: number;
@@ -66,7 +108,6 @@ export class GameScene {
   private others = new Map<string | number, CarRig>();
   private trafficTemplates: Mesh[] = [];
   private trafficPool = new Map<number, InstancedMesh>();
-  private signalHeads: { node: number; heading: number; lamps: Record<SignalColor, Mesh> }[] = [];
   private lampMats!: Record<SignalColor, { on: StandardMaterial; off: StandardMaterial }>;
   private camMode: CameraMode = 'chase';
   private camPos = new Vector3(0, 30, -30);
@@ -75,13 +116,19 @@ export class GameScene {
   private fpsWindow: number[] = [];
   private rain = false;
 
+  private readonly net: RoadNetwork;
+  private readonly procedural: ProceduralBuildings | null;
+  private readonly buildings: Building[];
+
   constructor(
     canvas: HTMLCanvasElement,
-    private readonly net: RoadNetwork,
-    private readonly buildings: Building[],
+    map: WorldMap,
     private readonly seed: string,
     quality: Quality = 'medium',
   ) {
+    const net = map.net;
+    this.net = net;
+    this.buildings = map.id === 'test' ? generateBuildings(net, seed) : [];
     this.quality = quality;
     this.engine = new Engine(canvas, PRESETS[quality].aa, { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' }, false);
     this.scale = Math.max(PRESETS[quality].minScale, 1 / Math.min(window.devicePixelRatio || 1, 1.5));
@@ -102,19 +149,16 @@ export class GameScene {
 
     this.camera = new UniversalCamera('cam', new Vector3(0, 20, -20), scene);
     this.camera.minZ = 0.3;
-    this.camera.maxZ = 2500;
+    this.camera.maxZ = 3000;
     this.camera.fov = 1.0;
     this.camera.inputs.clear();
 
+    this.procedural = map.id === 'test' ? null : new ProceduralBuildings(net, seed);
     this.buildGround();
-    this.buildRoads();
-    this.buildBuildings();
-    this.buildSignals();
     this.buildTrafficTemplates();
-    scene.freezeActiveMeshes(false);
   }
 
-  /* ---------------- static world ---------------- */
+  /* ---------------- static world: streamed cells ---------------- */
 
   private mat(name: string, color: Color3, spec = 0.05, emissive?: Color3) {
     const m = new StandardMaterial(name, this.scene);
@@ -124,151 +168,197 @@ export class GameScene {
     return m;
   }
 
+  private ground!: Mesh;
+  private asphalt!: StandardMaterial;
+  private paint!: StandardMaterial;
+  private bldgMat!: StandardMaterial;
+  private poleMat!: StandardMaterial;
+  private cellEdges = new Map<string, number[]>();
+  private cellNodes = new Map<string, number[]>();
+  private cells = new Map<string, { meshes: Mesh[]; signals: SignalCell | null }>();
+  private lastCellCheck = '';
+  private pending: string[] = [];
+
   private buildGround() {
-    const b = this.net.bounds;
-    const size = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 2.5;
-    const g = MeshBuilder.CreateGround('ground', { width: size, height: size }, this.scene);
-    g.material = this.mat('grass', new Color3(0.32, 0.4, 0.26));
-    g.freezeWorldMatrix();
-    // Boundary walls so the edge of the playable area is visible.
-    const wallMat = this.mat('wall', new Color3(0.55, 0.52, 0.48));
-    const w = b.maxX - b.minX;
-    const d = b.maxZ - b.minZ;
-    for (const [x, z, sx, sz] of [
-      [(b.minX + b.maxX) / 2, b.minZ - 1, w, 2],
-      [(b.minX + b.maxX) / 2, b.maxZ + 1, w, 2],
-      [b.minX - 1, (b.minZ + b.maxZ) / 2, 2, d],
-      [b.maxX + 1, (b.minZ + b.maxZ) / 2, 2, d],
-    ] as const) {
-      const m = MeshBuilder.CreateBox('bwall', { width: sx, depth: sz, height: 3 }, this.scene);
-      m.position.set(x, 1.5, z);
-      m.material = wallMat;
-      m.freezeWorldMatrix();
+    const g = MeshBuilder.CreateGround('ground', { width: 6000, height: 6000 }, this.scene);
+    g.material = this.mat('grass', new Color3(0.33, 0.4, 0.27));
+    this.ground = g;
+    this.asphalt = this.mat('asphalt', new Color3(0.17, 0.17, 0.19), 0.12);
+    this.asphalt.backFaceCulling = false;
+    this.paint = this.mat('paint', new Color3(0.9, 0.9, 0.85), 0, new Color3(0.35, 0.35, 0.33));
+    this.bldgMat = this.mat('bldgMat', new Color3(1, 1, 1), 0.1);
+    this.poleMat = this.mat('poleMat', new Color3(0.2, 0.2, 0.22));
+    const lampColors: Record<SignalColor, Color3> = { R: new Color3(1, 0.1, 0.08), A: new Color3(1, 0.65, 0.05), G: new Color3(0.1, 1, 0.35) };
+    this.lampMats = Object.fromEntries(
+      (Object.keys(lampColors) as SignalColor[]).map((k) => [k, { on: this.mat(`lamp${k}on`, lampColors[k], 0, lampColors[k]), off: this.mat(`lamp${k}off`, lampColors[k].scale(0.15), 0) }]),
+    ) as never;
+    // Assign every edge (by midpoint) and node to exactly one render cell.
+    const net = this.net;
+    for (const e of net.edges) {
+      const a = net.nodes[e.a]!;
+      const b = net.nodes[e.b]!;
+      const k = cellOf((a.x + b.x) / 2, (a.z + b.z) / 2);
+      (this.cellEdges.get(k) ?? this.cellEdges.set(k, []).get(k)!).push(e.id);
+    }
+    for (const n of net.nodes) {
+      const k = cellOf(n.x, n.z);
+      (this.cellNodes.get(k) ?? this.cellNodes.set(k, []).get(k)!).push(n.id);
     }
   }
 
   private buildRoads() {
+    /* roads are streamed per cell — see streamCells() */
+  }
+  private buildBuildings() {
+    /* buildings are streamed per cell — see streamCells() */
+  }
+  private buildSignals() {
+    /* signals are streamed per cell — see streamCells() */
+  }
+
+  /** Load cells near the camera (a few per frame), dispose far ones. Visual only — never affects gameplay. */
+  private streamCells(x: number, z: number) {
+    this.ground.position.set(Math.round(x / 500) * 500, 0, Math.round(z / 500) * 500);
+    const here = cellOf(x, z);
+    const R = Math.ceil(PRESETS[this.quality].draw / CELL);
+    if (here !== this.lastCellCheck) {
+      this.lastCellCheck = here;
+      const [cx, cz] = here.split(',').map(Number) as [number, number];
+      const want = new Set<string>();
+      for (let i = -R; i <= R; i++) for (let j = -R; j <= R; j++) if (i * i + j * j <= R * R + 1) want.add(`${cx + i},${cz + j}`);
+      for (const [k, c] of this.cells) if (!want.has(k)) (c.meshes.forEach((m) => m.dispose()), this.cells.delete(k));
+      this.pending = [...want].filter((k) => !this.cells.has(k)).sort((a, b) => cellDist(a, cx, cz) - cellDist(b, cx, cz));
+    }
+    for (let n = 0; n < 3 && this.pending.length; n++) {
+      const k = this.pending.shift()!;
+      if (!this.cells.has(k)) this.cells.set(k, this.buildCell(k));
+    }
+  }
+
+  get loadedCells() {
+    return this.cells.size;
+  }
+
+  private buildCell(key: string): { meshes: Mesh[]; signals: SignalCell | null } {
     const net = this.net;
-    const asphalt = this.mat('asphalt', new Color3(0.16, 0.16, 0.18), 0.15);
-    const kerbMat = this.mat('kerb', new Color3(0.62, 0.6, 0.56));
-    const W = net.halfWidth * 2;
-    const roadMeshes: Mesh[] = [];
-    for (const e of net.edges) {
+    const meshes: Mesh[] = [];
+    const edges = this.cellEdges.get(key) ?? [];
+    const nodes = this.cellNodes.get(key) ?? [];
+    // --- road surface: one merged mesh of quads + junction octagons ---
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const quad = (ax: number, az: number, bx: number, bz: number, hw: number, y: number) => {
+      const L = Math.hypot(bx - ax, bz - az) || 1;
+      const nx = (-(bz - az) / L) * hw;
+      const nz = ((bx - ax) / L) * hw;
+      const o = pos.length / 3;
+      pos.push(ax + nx, y, az + nz, ax - nx, y, az - nz, bx - nx, y, bz - nz, bx + nx, y, bz + nz);
+      idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+    };
+    for (const id of edges) {
+      const e = net.edges[id]!;
       const a = net.nodes[e.a]!;
       const b = net.nodes[e.b]!;
-      const h = Math.atan2(b.x - a.x, b.z - a.z);
-      const road = MeshBuilder.CreateBox(`road${e.id}`, { width: W, depth: e.length, height: 0.1 }, this.scene);
-      road.position.set((a.x + b.x) / 2, 0.05, (a.z + b.z) / 2);
-      road.rotation.y = h;
-      roadMeshes.push(road);
-      for (const side of [-1, 1]) {
-        const k = MeshBuilder.CreateBox(`kerb${e.id}${side}`, { width: 5, depth: e.length - W, height: 0.22 }, this.scene);
-        const ox = Math.cos(h) * side * (net.halfWidth + 2.5);
-        const oz = -Math.sin(h) * side * (net.halfWidth + 2.5);
-        k.position.set((a.x + b.x) / 2 + ox, 0.11, (a.z + b.z) / 2 + oz);
-        k.rotation.y = h;
-        roadMeshes.push(k);
-        k.material = kerbMat;
-      }
+      quad(a.x, a.z, b.x, b.z, e.halfWidth, 0.05 + (e.cls <= 1 ? 0.01 : 0));
     }
-    for (const n of net.nodes) {
-      const pad = MeshBuilder.CreateBox(`junction${n.id}`, { width: W, depth: W, height: 0.1 }, this.scene);
-      pad.position.set(n.x, 0.051, n.z);
-      roadMeshes.push(pad);
+    for (const nid of nodes) {
+      const n = net.nodes[nid]!;
+      const r = Math.max(n.radius, net.out[nid]!.length ? maxHalfWidth(net, nid) : 0);
+      if (r <= 0) continue;
+      const o = pos.length / 3;
+      pos.push(n.x, 0.055, n.z);
+      for (let i = 0; i < 8; i++) pos.push(n.x + Math.sin((i * Math.PI) / 4) * r, 0.055, n.z + Math.cos((i * Math.PI) / 4) * r);
+      for (let i = 0; i < 8; i++) idx.push(o, o + 1 + i, o + 1 + ((i + 1) % 8));
     }
-    for (const m of roadMeshes) if (!m.material) m.material = asphalt;
-    const merged = Mesh.MergeMeshes(roadMeshes.filter((m) => m.material === asphalt), true, true);
-    merged?.freezeWorldMatrix();
-    const kerbs = Mesh.MergeMeshes(roadMeshes.filter((m) => !m.isDisposed() && m.material === kerbMat), true, true);
-    kerbs?.freezeWorldMatrix();
-
-    // Lane markings: thin instances of one dash mesh (one draw call).
-    const dash = MeshBuilder.CreateBox('dash', { width: 0.18, depth: 3, height: 0.02 }, this.scene);
-    dash.material = this.mat('paint', new Color3(0.9, 0.9, 0.85), 0, new Color3(0.35, 0.35, 0.33));
+    if (idx.length) {
+      const m = new Mesh(`road-${key}`, this.scene);
+      const vd = new VertexData();
+      vd.positions = pos;
+      vd.indices = idx;
+      const normals: number[] = [];
+      VertexData.ComputeNormals(pos, idx, normals);
+      vd.normals = normals.map((v, i) => (i % 3 === 1 ? 1 : 0));
+      vd.applyToMesh(m);
+      m.material = this.asphalt;
+      m.freezeWorldMatrix();
+      m.isPickable = false;
+      meshes.push(m);
+    }
+    // --- lane markings (dashed centre lines on two-way roads) ---
     const mats: number[] = [];
-    const push = (x: number, z: number, h: number, sx = 1, sz = 1) => {
-      const m = Matrix.Compose(new Vector3(sx, 1, sz), Quaternion.RotationAxis(Vector3.Up(), h), new Vector3(x, 0.11, z));
-      mats.push(...m.asArray());
-    };
-    for (const e of net.edges) {
-      const de = e.id * 2;
-      const h = deHeading(net, de);
-      for (let s = net.junctionRadius + 2; s < e.length - net.junctionRadius - 2; s += 8) {
-        const c = lanePoint(net, de, -0.5, s); // centre line (between directions)
-        push(c.x, c.z, h, 1.2, 1);
-        for (const dir of [de, deReverse(de)]) {
-          const l = lanePoint(net, dir, 0.5, dir === de ? s : e.length - s); // between lanes 0 and 1
-          push(l.x, l.z, h);
-        }
-      }
-      // Stop lines
-      for (const dir of [de, deReverse(de)]) {
-        const sl = lanePoint(net, dir, 0.5, e.length - net.junctionRadius);
-        const hh = deHeading(net, dir);
-        const m = Matrix.Compose(new Vector3(40, 1, 0.15), Quaternion.RotationAxis(Vector3.Up(), hh), new Vector3(sl.x, 0.11, sl.z));
-        mats.push(...m.asArray());
+    for (const id of edges) {
+      const e = net.edges[id]!;
+      if (e.oneway || e.length < 12) continue;
+      const h = deHeading(net, id * 2);
+      const q = Quaternion.RotationAxis(Vector3.Up(), h);
+      for (let s0 = 6; s0 < e.length - 6; s0 += 9) {
+        const c = lanePoint(net, id * 2, -0.5, s0);
+        Matrix.Compose(new Vector3(1, 1, 1), q, new Vector3(c.x, 0.08, c.z)).asArray().forEach((v) => mats.push(v));
       }
     }
-    dash.thinInstanceSetBuffer('matrix', new Float32Array(mats), 16, true);
-  }
-
-  private buildBuildings() {
-    const box = MeshBuilder.CreateBox('bldg', { size: 1 }, this.scene);
-    const m = this.mat('bldgMat', new Color3(1, 1, 1), 0.1);
-    box.material = m;
-    const mats = new Float32Array(this.buildings.length * 16);
-    const cols = new Float32Array(this.buildings.length * 4);
-    const palette = [
-      [0.86, 0.82, 0.74], [0.78, 0.8, 0.82], [0.62, 0.66, 0.72], [0.9, 0.86, 0.8], [0.72, 0.62, 0.55], [0.55, 0.62, 0.66],
-    ];
-    this.buildings.forEach((b, i) => {
-      Matrix.Compose(new Vector3(b.w, b.h, b.d), Quaternion.Identity(), new Vector3(b.x, b.h / 2, b.z)).copyToArray(mats, i * 16);
-      const c = palette[Math.floor(b.tone * palette.length)]!;
-      cols.set([c[0]!, c[1]!, c[2]!, 1], i * 4);
-    });
-    box.thinInstanceSetBuffer('matrix', mats, 16, true);
-    box.thinInstanceSetBuffer('color', cols, 4, true);
-  }
-
-  private buildSignals() {
-    const net = this.net;
-    const pole = MeshBuilder.CreateCylinder('pole', { height: 5, diameter: 0.18, tessellation: 6 }, this.scene);
-    pole.material = this.mat('poleMat', new Color3(0.2, 0.2, 0.22));
-    const head = MeshBuilder.CreateBox('head', { width: 0.5, height: 1.4, depth: 0.4 }, this.scene);
-    head.material = this.mat('headMat', new Color3(0.08, 0.08, 0.09));
-    const lampColors: Record<SignalColor, Color3> = { R: new Color3(1, 0.1, 0.08), A: new Color3(1, 0.65, 0.05), G: new Color3(0.1, 1, 0.35) };
-    this.lampMats = Object.fromEntries(
-      (Object.keys(lampColors) as SignalColor[]).map((k) => [
-        k,
-        { on: this.mat(`lamp${k}on`, lampColors[k], 0, lampColors[k]), off: this.mat(`lamp${k}off`, lampColors[k].scale(0.15), 0) },
-      ]),
-    ) as never;
-    const poleM: number[] = [];
-    const headM: number[] = [];
-    for (const n of net.nodes) {
-      if (!n.signal) continue;
-      for (const out of net.out[n.id]!) {
-        const incoming = deReverse(out); // edge arriving at n
-        const h = deHeading(net, incoming);
-        const e = net.edges[incoming >> 1]!;
-        // Signal head on the left kerb at the stop line (keep-left traffic).
-        const p = lanePoint(net, incoming, 2.4, e.length - net.junctionRadius);
-        poleM.push(...Matrix.Compose(Vector3.One(), Quaternion.Identity(), new Vector3(p.x, 2.5, p.z)).asArray());
-        headM.push(...Matrix.Compose(Vector3.One(), Quaternion.RotationAxis(Vector3.Up(), h), new Vector3(p.x, 5, p.z)).asArray());
-        const lamps = {} as Record<SignalColor, Mesh>;
-        (['R', 'A', 'G'] as SignalColor[]).forEach((c, i) => {
-          const l = MeshBuilder.CreateSphere(`lamp${n.id}-${incoming}-${c}`, { diameter: 0.32, segments: 6 }, this.scene);
-          const back = -0.22;
-          l.position.set(p.x - Math.sin(h) * back, 5.45 - i * 0.45, p.z - Math.cos(h) * back);
-          l.material = this.lampMats[c].off;
-          l.freezeWorldMatrix();
-          lamps[c] = l;
-        });
-        this.signalHeads.push({ node: n.id, heading: h, lamps });
+    if (mats.length) {
+      const dash = MeshBuilder.CreateBox(`dash-${key}`, { width: 0.18, depth: 3, height: 0.02 }, this.scene);
+      dash.material = this.paint;
+      dash.thinInstanceSetBuffer('matrix', new Float32Array(mats), 16, true);
+      dash.isPickable = false;
+      meshes.push(dash);
+    }
+    // --- buildings (original procedural, identical to the server's collision set) ---
+    const [cx, cz] = key.split(',').map(Number) as [number, number];
+    const list: Building[] = [];
+    if (this.procedural) {
+      const b0x = Math.floor((cx * CELL) / BUILDING_CELL);
+      const b0z = Math.floor((cz * CELL) / BUILDING_CELL);
+      const n = CELL / BUILDING_CELL;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) list.push(...this.procedural.cell(b0x + i, b0z + j));
+    } else for (const b of this.buildings) if (cellOf(b.x, b.z) === key) list.push(b);
+    if (list.length) {
+      const box = MeshBuilder.CreateBox(`bldg-${key}`, { size: 1 }, this.scene);
+      box.material = this.bldgMat;
+      const bm = new Float32Array(list.length * 16);
+      const cols = new Float32Array(list.length * 4);
+      const palette = [[0.86, 0.82, 0.74], [0.78, 0.8, 0.82], [0.62, 0.66, 0.72], [0.9, 0.86, 0.8], [0.72, 0.62, 0.55], [0.55, 0.62, 0.66], [0.94, 0.9, 0.7]];
+      list.forEach((b, i) => {
+        Matrix.Compose(new Vector3(b.w, b.h, b.d), Quaternion.RotationAxis(Vector3.Up(), b.rot ?? 0), new Vector3(b.x, b.h / 2, b.z)).copyToArray(bm, i * 16);
+        const c = palette[Math.floor(b.tone * palette.length)]!;
+        cols.set([c[0]!, c[1]!, c[2]!, 1], i * 4);
+      });
+      box.thinInstanceSetBuffer('matrix', bm, 16, true);
+      box.thinInstanceSetBuffer('color', cols, 4, true);
+      box.isPickable = false;
+      meshes.push(box);
+    }
+    // --- traffic signals at signalised junctions owned by this cell ---
+    let signals: SignalCell | null = null;
+    const heads: { node: number; heading: number; x: number; z: number }[] = [];
+    for (const nid of nodes) {
+      if (!net.nodes[nid]!.signal) continue;
+      for (const de of incomingDes(net, nid)) {
+        const e = net.edges[de >> 1]!;
+        const p = lanePoint(net, de, e.oneway ? e.lanes - 0.4 : e.lanes + 0.4, deStop(net, de));
+        heads.push({ node: nid, heading: deHeading(net, de), x: p.x, z: p.z });
       }
     }
-    pole.thinInstanceSetBuffer('matrix', new Float32Array(poleM), 16, true);
-    head.thinInstanceSetBuffer('matrix', new Float32Array(headM), 16, true);
+    if (heads.length) {
+      const pole = MeshBuilder.CreateCylinder(`pole-${key}`, { height: 5, diameter: 0.18, tessellation: 6 }, this.scene);
+      pole.material = this.poleMat;
+      pole.thinInstanceSetBuffer('matrix', new Float32Array(heads.flatMap((h) => Matrix.Translation(h.x, 2.5, h.z).asArray())), 16, true);
+      meshes.push(pole);
+      const lamps = {} as Record<SignalColor, { on: Mesh; off: Mesh }>;
+      (['R', 'A', 'G'] as SignalColor[]).forEach((c, i) => {
+        const mk = (on: boolean) => {
+          const l = MeshBuilder.CreateSphere(`lamp-${key}-${c}-${on}`, { diameter: 0.34, segments: 4 }, this.scene);
+          l.material = on ? this.lampMats[c].on : this.lampMats[c].off;
+          l.isPickable = false;
+          meshes.push(l);
+          return l;
+        };
+        lamps[c] = { on: mk(true), off: mk(false) };
+        void i;
+      });
+      signals = { heads, lamps, state: '' };
+    }
+    return { meshes, signals };
   }
 
   private buildTrafficTemplates() {
@@ -328,12 +418,25 @@ export class GameScene {
   }
 
   updateSignals(simMs: number) {
-    for (const s of this.signalHeads) {
-      const c = signalState(s.node, axisOfHeading(s.heading), simMs, this.seed);
-      for (const k of ['R', 'A', 'G'] as SignalColor[]) {
-        const m = k === c ? this.lampMats[k].on : this.lampMats[k].off;
-        if (s.lamps[k].material !== m) s.lamps[k].material = m;
-      }
+    for (const c of this.cells.values()) {
+      const sc = c.signals;
+      if (!sc) continue;
+      const states = sc.heads.map((h) => signalState(h.node, signalGroup(this.net, h.node, h.heading), simMs, this.seed));
+      const key = states.join('');
+      if (key === sc.state) continue;
+      sc.state = key;
+      (['R', 'A', 'G'] as SignalColor[]).forEach((col, i) => {
+        const on: number[] = [];
+        const off: number[] = [];
+        sc.heads.forEach((h, j) => {
+          const fx = Math.sin(h.heading);
+          const fz = Math.cos(h.heading);
+          const m = Matrix.Translation(h.x + fx * 0.2, 5.45 - i * 0.45, h.z + fz * 0.2).asArray();
+          (states[j] === col ? on : off).push(...m);
+        });
+        sc.lamps[col].on.thinInstanceSetBuffer('matrix', new Float32Array(on.length ? on : Matrix.Translation(0, -1000, 0).asArray()), 16, false);
+        sc.lamps[col].off.thinInstanceSetBuffer('matrix', new Float32Array(off.length ? off : Matrix.Translation(0, -1000, 0).asArray()), 16, false);
+      });
     }
   }
 
@@ -358,6 +461,7 @@ export class GameScene {
   }
 
   updateCamera(p: CarPose, speed: number, dt: number) {
+    this.streamCells(p.x, p.z);
     const fx = Math.sin(p.heading);
     const fz = Math.cos(p.heading);
     let target: Vector3;

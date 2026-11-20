@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { WAYPOINTS, createRng, createTestNetwork } from '@redline/shared';
+import { createRng, testMap } from '@redline/shared';
 import { BLUFF_PROMPTS, CODING_TEMPLATES, FOUR_KEY_TEMPLATES, navigationVariant, normalizeAnswer } from '../src/squad/content';
 
 const runJs = (code: string) => {
@@ -56,11 +56,12 @@ describe('challenge content is correct (answer keys verified by execution)', () 
   });
 
   it('navigation answer is the strictly nearest waypoint and is an option', () => {
-    const net = createTestNetwork();
+    const map = testMap();
+    const net = map.net;
     for (let i = 0; i < 200; i++) {
-      const v = navigationVariant(createRng('nav', String(i)));
+      const v = navigationVariant(createRng('nav', String(i)), map);
       const [, x, z] = v.prompt.match(/map point \((-?\d+), (-?\d+)\)/)!.map(Number) as [number, number, number];
-      const d = WAYPOINTS.map((w) => ({ l: w.label, d: Math.hypot(net.nodes[w.node]!.x - x, net.nodes[w.node]!.z - z) })).sort((a, b) => a.d - b.d);
+      const d = map.waypoints.map((w) => ({ l: w.label, d: Math.hypot(net.nodes[w.node]!.x - x, net.nodes[w.node]!.z - z) })).sort((a, b) => a.d - b.d);
       expect(v.answer).toBe(d[0]!.l);
       expect(v.options).toContain(v.answer);
     }

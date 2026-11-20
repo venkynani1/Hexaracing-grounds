@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { events, players, sessions, teams, type Db, type Executor } from '@redline/db';
+import { events, players, sessions, startLocations, teams, type Db, type Executor } from '@redline/db';
 import {
   BALANCE,
   ROLES,
@@ -21,6 +21,7 @@ export interface TeamRow {
   id: string;
   name: string;
   joinCode: string;
+  startCode: string | null;
 }
 export interface PlayerRow {
   id: string;
@@ -256,12 +257,70 @@ export class RegistrationService {
     };
   }
 
+  /**
+   * Captain picks the squad's start location before START. Only verified + enabled locations with free
+   * capacity are selectable (capacity enforced under row locks).
+   */
+  async setStartLocation(actorPlayerId: string, code: unknown) {
+    if (typeof code !== 'string') throw badRequest('INVALID_START', 'Choose a start location');
+    if (!this.registrationOpen()) throw conflict('EVENT_STARTED', 'Start locations are locked once the host presses START');
+    await this.db.transaction(async (tx) => {
+      const [actor] = await tx.select().from(players).where(eq(players.id, actorPlayerId)).limit(1);
+      if (!actor) throw unauthorized();
+      if (actor.role !== 'CAPTAIN') throw forbidden('NOT_CAPTAIN', 'Only the Captain chooses the start location');
+      const [loc] = await tx.select().from(startLocations).where(eq(startLocations.code, code)).for('update');
+      if (!loc) throw notFound('UNKNOWN_START', 'Unknown start location');
+      if (!loc.enabled || !loc.verifiedAt) throw conflict('START_DISABLED', `${loc.name} is not available (not verified)`);
+      const [team] = await tx.select().from(teams).where(eq(teams.id, actor.teamId)).for('update');
+      if (team!.startLocationId === loc.id) return;
+      const [{ count }] = (await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(teams)
+        .where(and(eq(teams.eventId, this.eventId), eq(teams.startLocationId, loc.id)))) as [{ count: number }];
+      if (count >= loc.maxSquads) throw conflict('START_FULL', `${loc.name} is full (${loc.maxSquads} squads)`);
+      await tx.update(teams).set({ startLocationId: loc.id }).where(eq(teams.id, actor.teamId));
+      await audit(tx, this.eventId, 'player', actorPlayerId, 'squad.start_location', { teamId: actor.teamId, code });
+    });
+  }
+
+  /** At START: squads that did not choose get the least-used verified location (ties: list order). Disclosed via audit. */
+  async autoAssignStarts(order: string[]): Promise<{ teamId: string; code: string }[]> {
+    const assigned: { teamId: string; code: string }[] = [];
+    await this.db.transaction(async (tx) => {
+      const locs = await tx.select().from(startLocations).where(eq(startLocations.enabled, true));
+      const usable = order.map((c) => locs.find((l) => l.code === c && l.verifiedAt)).filter((l): l is NonNullable<typeof l> => !!l);
+      if (!usable.length) return;
+      const ts = await tx.select({ id: teams.id, start: teams.startLocationId }).from(teams).where(eq(teams.eventId, this.eventId)).orderBy(asc(teams.createdAt));
+      const load = new Map(usable.map((l) => [l.id, ts.filter((t) => t.start === l.id).length]));
+      for (const t of ts) {
+        if (t.start) continue;
+        const pick = [...usable].sort((a, b) => load.get(a.id)! - load.get(b.id)! || order.indexOf(a.code) - order.indexOf(b.code))[0]!;
+        if (load.get(pick.id)! >= pick.maxSquads) continue;
+        load.set(pick.id, load.get(pick.id)! + 1);
+        await tx.update(teams).set({ startLocationId: pick.id }).where(eq(teams.id, t.id));
+        assigned.push({ teamId: t.id, code: pick.code });
+      }
+      if (assigned.length) await audit(tx, this.eventId, 'system', null, 'squad.start_location_auto', { assigned });
+    });
+    return assigned;
+  }
+
+  async startLocationUsage(): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({ code: startLocations.code, count: sql<number>`count(${teams.id})::int` })
+      .from(startLocations)
+      .leftJoin(teams, and(eq(teams.startLocationId, startLocations.id), eq(teams.eventId, this.eventId)))
+      .groupBy(startLocations.code);
+    return new Map(rows.map((r) => [r.code, r.count]));
+  }
+
   /* ------------ reads ------------ */
 
   async listTeams(): Promise<(TeamRow & { players: PlayerRow[] })[]> {
     const ts = await this.db
-      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode })
+      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode, startCode: startLocations.code })
       .from(teams)
+      .leftJoin(startLocations, eq(teams.startLocationId, startLocations.id))
       .where(eq(teams.eventId, this.eventId))
       .orderBy(asc(teams.createdAt));
     const ps = ts.length
@@ -276,8 +335,9 @@ export class RegistrationService {
 
   async getTeam(teamId: string): Promise<(TeamRow & { players: PlayerRow[] }) | null> {
     const [t] = await this.db
-      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode })
+      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode, startCode: startLocations.code })
       .from(teams)
+      .leftJoin(startLocations, eq(teams.startLocationId, startLocations.id))
       .where(and(eq(teams.id, teamId), eq(teams.eventId, this.eventId)))
       .limit(1);
     if (!t) return null;
@@ -291,7 +351,7 @@ export class RegistrationService {
 
   private async findTeamByCode(db: Executor, joinCode: string, forUpdate = false) {
     const q = db
-      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode })
+      .select({ id: teams.id, name: teams.name, joinCode: teams.joinCode, startCode: sql<string | null>`null` })
       .from(teams)
       .where(and(eq(teams.eventId, this.eventId), eq(teams.joinCode, joinCode)))
       .limit(1);

@@ -6,20 +6,36 @@
  */
 import { createRng } from '../rng';
 import type { VehicleState } from './vehicle';
+// (createRng above is also used by ProceduralBuildings)
 
 export interface RoadNode {
   id: number;
   x: number;
   z: number;
   signal: boolean;
+  /** Distance from the node centre to the stop line / junction box edge (0 for a simple bend). */
+  radius: number;
+  /** Reference heading that splits approaches into the two signal groups. */
+  axis: number;
 }
+/** Road class (lower = more major). */
+export const ROAD_CLASSES = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'link'] as const;
+/** Reference cruising speed per class, m/s — used by traffic, the reference car and route calibration. */
+export const CLASS_SPEED = [25, 22, 18, 15, 12, 11] as const;
 export interface RoadEdge {
   id: number;
   a: number;
   b: number;
+  /** Lanes per direction (total lanes when one-way). */
   lanes: number;
   speedLimit: number;
   length: number;
+  /** One-way edges may only be travelled a→b. */
+  oneway: boolean;
+  /** Half the paved width of this carriageway. */
+  halfWidth: number;
+  cls: number;
+  name?: string;
 }
 export interface RoadNetwork {
   version: string;
@@ -46,6 +62,18 @@ export function deEnds(net: RoadNetwork, de: number): { from: RoadNode; to: Road
   return de & 1 ? { from: b, to: a } : { from: a, to: b };
 }
 
+/** Stop-line distances for a directed edge, clamped so short edges still work. */
+export function deStart(net: RoadNetwork, de: number): number {
+  const e = net.edges[de >> 1]!;
+  const from = net.nodes[de & 1 ? e.b : e.a]!;
+  return Math.min(from.radius, e.length * 0.45);
+}
+export function deStop(net: RoadNetwork, de: number): number {
+  const e = net.edges[de >> 1]!;
+  const to = net.nodes[de & 1 ? e.a : e.b]!;
+  return e.length - Math.min(to.radius, e.length * 0.45);
+}
+
 export function deHeading(net: RoadNetwork, de: number): number {
   const { from, to } = deEnds(net, de);
   return Math.atan2(to.x - from.x, to.z - from.z);
@@ -57,8 +85,10 @@ export function lanePoint(net: RoadNetwork, de: number, laneF: number, s: number
   const len = net.edges[de >> 1]!.length;
   const dx = (to.x - from.x) / len;
   const dz = (to.z - from.z) / len;
-  // Left of travel direction = (−dz, dx)·(−1)? forward=(dx,dz); right=(dz,−dx); left=(−dz,dx).
-  const off = (laneF + 0.5) * net.laneWidth;
+  // forward=(dx,dz); left of travel=(−dz,dx). Two-way: lanes left of the centre line (keep left).
+  // One-way: lanes laid symmetrically about the centre line, lane 0 leftmost.
+  const e = net.edges[de >> 1]!;
+  const off = e.oneway ? (laneF + 0.5) * net.laneWidth - (e.lanes * net.laneWidth) / 2 : (laneF + 0.5) * net.laneWidth;
   return { x: from.x + dx * s - dz * off, z: from.z + dz * s + dx * off, heading: Math.atan2(dx, dz) };
 }
 
@@ -67,13 +97,17 @@ export function createTestNetwork(opts: { size?: number; spacing?: number } = {}
   const spacing = opts.spacing ?? 320;
   const half = ((size - 1) * spacing) / 2;
   const nodes: RoadNode[] = [];
+  const laneWidth = 3.5;
+  const halfWidth = 2 * laneWidth + 1;
+  const junctionRadius = halfWidth + 2;
   for (let r = 0; r < size; r++)
-    for (let c = 0; c < size; c++) nodes.push({ id: r * size + c, x: -half + c * spacing, z: -half + r * spacing, signal: false });
+    for (let c = 0; c < size; c++)
+      nodes.push({ id: r * size + c, x: -half + c * spacing, z: -half + r * spacing, signal: false, radius: junctionRadius, axis: 0 });
   const edges: RoadEdge[] = [];
   const add = (a: number, b: number) => {
     const na = nodes[a]!;
     const nb = nodes[b]!;
-    edges.push({ id: edges.length, a, b, lanes: 2, speedLimit: 16, length: Math.hypot(nb.x - na.x, nb.z - na.z) });
+    edges.push({ id: edges.length, a, b, lanes: 2, speedLimit: 16, length: Math.hypot(nb.x - na.x, nb.z - na.z), oneway: false, halfWidth, cls: 2 });
   };
   for (let r = 0; r < size; r++)
     for (let c = 0; c < size; c++) {
@@ -86,8 +120,6 @@ export function createTestNetwork(opts: { size?: number; spacing?: number } = {}
     out[e.b]!.push(e.id * 2 + 1);
   }
   for (const n of nodes) n.signal = out[n.id]!.length >= 3;
-  const laneWidth = 3.5;
-  const halfWidth = 2 * laneWidth + 1;
   const margin = 80;
   return {
     version: `test-grid-${size}x${size}-${spacing}`,
@@ -95,29 +127,96 @@ export function createTestNetwork(opts: { size?: number; spacing?: number } = {}
     edges,
     laneWidth,
     halfWidth,
-    junctionRadius: halfWidth + 2,
+    junctionRadius,
     out,
     bounds: { minX: -half - margin, maxX: half + margin, minZ: -half - margin, maxZ: half + margin },
   };
 }
 
-/** Distance from a point to the nearest road centreline. */
-export function distanceToRoad(net: RoadNetwork, x: number, z: number): number {
-  let best = Infinity;
+/* ---------------- Spatial index (uniform grid of edges) ---------------- */
+
+export const INDEX_CELL = 64;
+interface RoadIndex {
+  cells: Map<number, number[]>;
+}
+const indexCache = new WeakMap<RoadNetwork, RoadIndex>();
+const cellKey = (cx: number, cz: number) => cx * 73856093 + cz * 19349663;
+
+export function roadIndex(net: RoadNetwork): RoadIndex {
+  let idx = indexCache.get(net);
+  if (idx) return idx;
+  idx = { cells: new Map() };
   for (const e of net.edges) {
     const a = net.nodes[e.a]!;
     const b = net.nodes[e.b]!;
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)));
-    const d = Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
-    if (d < best) best = d;
+    const pad = e.halfWidth + 2;
+    const x0 = Math.floor((Math.min(a.x, b.x) - pad) / INDEX_CELL);
+    const x1 = Math.floor((Math.max(a.x, b.x) + pad) / INDEX_CELL);
+    const z0 = Math.floor((Math.min(a.z, b.z) - pad) / INDEX_CELL);
+    const z1 = Math.floor((Math.max(a.z, b.z) + pad) / INDEX_CELL);
+    for (let cx = x0; cx <= x1; cx++)
+      for (let cz = z0; cz <= z1; cz++) {
+        // Only cells the segment actually passes near (cheap distance test on the cell centre).
+        const mx = (cx + 0.5) * INDEX_CELL;
+        const mz = (cz + 0.5) * INDEX_CELL;
+        if (segDist(mx, mz, a.x, a.z, b.x, b.z) > INDEX_CELL * 0.75 + pad) continue;
+        const k = cellKey(cx, cz);
+        let list = idx.cells.get(k);
+        if (!list) idx.cells.set(k, (list = []));
+        list.push(e.id);
+      }
+  }
+  indexCache.set(net, idx);
+  return idx;
+}
+
+function segDist(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const L = dx * dx + dz * dz;
+  const t = L > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0;
+  return Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+}
+
+/** Edge ids whose carriageway may lie within `r` metres of (x, z). */
+export function edgesNear(net: RoadNetwork, x: number, z: number, r = 0): number[] {
+  const idx = roadIndex(net);
+  const out = new Set<number>();
+  const c0x = Math.floor((x - r) / INDEX_CELL);
+  const c1x = Math.floor((x + r) / INDEX_CELL);
+  const c0z = Math.floor((z - r) / INDEX_CELL);
+  const c1z = Math.floor((z + r) / INDEX_CELL);
+  for (let cx = c0x; cx <= c1x; cx++) for (let cz = c0z; cz <= c1z; cz++) for (const id of idx.cells.get(cellKey(cx, cz)) ?? []) out.add(id);
+  return [...out];
+}
+
+/** Nearest edge to a point: id, centreline distance and clearance (distance minus half width; ≤ 0 = on the road). */
+export function nearestEdge(net: RoadNetwork, x: number, z: number, searchR = 200) {
+  let best = { edge: -1, dist: Infinity, clearance: Infinity, t: 0 };
+  for (const r of [0, INDEX_CELL, searchR]) {
+    for (const id of edgesNear(net, x, z, r)) {
+      const e = net.edges[id]!;
+      const a = net.nodes[e.a]!;
+      const b = net.nodes[e.b]!;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const L = dx * dx + dz * dz;
+      const t = L > 0 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L)) : 0;
+      const d = Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
+      if (d - e.halfWidth < best.clearance) best = { edge: id, dist: d, clearance: d - e.halfWidth, t };
+    }
+    if (best.edge >= 0 && best.clearance < r) break;
   }
   return best;
 }
 
+/** Distance from a point to the nearest road centreline. */
+export function distanceToRoad(net: RoadNetwork, x: number, z: number): number {
+  return nearestEdge(net, x, z).dist;
+}
+
 export function isOnRoad(net: RoadNetwork, x: number, z: number): boolean {
-  return distanceToRoad(net, x, z) <= net.halfWidth;
+  return nearestEdge(net, x, z, INDEX_CELL).clearance <= 0;
 }
 
 /* ---------------- Traffic signals ---------------- */
@@ -129,6 +228,11 @@ export const SIGNAL_CYCLE_MS = 2 * (SIGNAL_TIMING.greenMs + SIGNAL_TIMING.amberM
 
 export function axisOfHeading(heading: number): Axis {
   return Math.abs(Math.cos(heading)) >= Math.abs(Math.sin(heading)) ? 'NS' : 'EW';
+}
+
+/** Signal group of an approach heading at a node (relative to the node's own axis, so skewed junctions work). */
+export function signalGroup(net: RoadNetwork, nodeId: number, heading: number): Axis {
+  return axisOfHeading(heading - net.nodes[nodeId]!.axis);
 }
 
 /** Deterministic signal state from shared simulation time — identical on every client and the server. */
@@ -148,10 +252,13 @@ export function signalState(nodeId: number, axis: Axis, simMs: number, seed: str
 export interface Building {
   x: number;
   z: number;
+  /** Size along local x (after rotation) and local z. */
   w: number;
   d: number;
   h: number;
   tone: number;
+  /** Rotation about Y (radians); 0 = axis aligned. */
+  rot?: number;
 }
 
 export function generateBuildings(net: RoadNetwork, seed: string | number = 0): Building[] {
@@ -181,6 +288,7 @@ export function generateBuildings(net: RoadNetwork, seed: string | number = 0): 
             d,
             h: 8 + Math.floor(rng.next() * rng.next() * 70),
             tone: rng.next(),
+            rot: 0,
           });
         }
     }
@@ -213,29 +321,42 @@ export function resolveStatic(
   for (const b of buildings) {
     const hx = b.w / 2;
     const hz = b.d / 2;
-    if (Math.abs(x - b.x) > hx + CAR_RADIUS || Math.abs(z - b.z) > hz + CAR_RADIUS) continue;
-    const cx = Math.max(b.x - hx, Math.min(x, b.x + hx));
-    const cz = Math.max(b.z - hz, Math.min(z, b.z + hz));
-    let dx = x - cx;
-    let dz = z - cz;
-    let d = Math.hypot(dx, dz);
+    const br = Math.hypot(hx, hz) + CAR_RADIUS;
+    if (Math.abs(x - b.x) > br || Math.abs(z - b.z) > br) continue;
+    // Work in the building's local frame (oriented box).
+    const c = Math.cos(b.rot ?? 0);
+    const sn = Math.sin(b.rot ?? 0);
+    const rx = x - b.x;
+    const rz = z - b.z;
+    const lx = rx * c - rz * sn;
+    const lz = rx * sn + rz * c;
+    if (Math.abs(lx) > hx + CAR_RADIUS || Math.abs(lz) > hz + CAR_RADIUS) continue;
+    const cx = Math.max(-hx, Math.min(lx, hx));
+    const cz = Math.max(-hz, Math.min(lz, hz));
+    let dx = lx - cx;
+    let dz = lz - cz;
+    const d = Math.hypot(dx, dz);
     if (d >= CAR_RADIUS) continue;
+    let nlx: number;
+    let nlz: number;
+    let px: number;
+    let pz: number;
     if (d < 1e-6) {
-      // Centre inside the box: push out along the shallowest axis.
-      const px = hx - Math.abs(x - b.x);
-      const pz = hz - Math.abs(z - b.z);
-      if (px < pz) (dx = Math.sign(x - b.x) || 1), (dz = 0);
-      else (dx = 0), (dz = Math.sign(z - b.z) || 1);
-      x = px < pz ? b.x + dx * (hx + CAR_RADIUS) : x;
-      z = px < pz ? z : b.z + dz * (hz + CAR_RADIUS);
-      bounce(dx, dz);
-      continue;
+      const ox = hx - Math.abs(lx);
+      const oz = hz - Math.abs(lz);
+      if (ox < oz) (nlx = Math.sign(lx) || 1), (nlz = 0), (px = nlx * (hx + CAR_RADIUS)), (pz = lz);
+      else (nlx = 0), (nlz = Math.sign(lz) || 1), (px = lx), (pz = nlz * (hz + CAR_RADIUS));
+    } else {
+      nlx = dx / d;
+      nlz = dz / d;
+      px = cx + nlx * CAR_RADIUS;
+      pz = cz + nlz * CAR_RADIUS;
     }
-    const nx = dx / d;
-    const nz = dz / d;
-    x = cx + nx * CAR_RADIUS;
-    z = cz + nz * CAR_RADIUS;
-    bounce(nx, nz);
+    // Back to world frame (inverse rotation).
+    x = b.x + px * c + pz * sn;
+    z = b.z - px * sn + pz * c;
+    bounce(nlx * c + nlz * sn, -nlx * sn + nlz * c);
+    dx = dz = 0;
   }
   if (x < bounds.minX) (x = bounds.minX), bounce(1, 0);
   if (x > bounds.maxX) (x = bounds.maxX), bounce(-1, 0);
@@ -257,3 +378,80 @@ export function spawnSlots(net: RoadNetwork, count: number, de = 0): { x: number
 }
 
 export const SPAWN_DE = 0;
+
+/* ---------------- Procedural roadside buildings for real maps (original, deterministic) ---------------- */
+
+export const BUILDING_CELL = 200;
+
+/**
+ * Generates original box buildings along both sides of every road, lazily per 200 m cell, identically on
+ * server (collision) and client (render). Lots never encroach on any carriageway.
+ */
+export class ProceduralBuildings {
+  private cache = new Map<number, Building[]>();
+  constructor(
+    private readonly net: RoadNetwork,
+    private readonly seed: string | number,
+    private readonly maxCells = 4000,
+  ) {}
+
+  cell(cx: number, cz: number): Building[] {
+    const k = cellKey(cx, cz);
+    const hit = this.cache.get(k);
+    if (hit) return hit;
+    const out = this.generate(cx, cz);
+    if (this.cache.size >= this.maxCells) this.cache.delete(this.cache.keys().next().value!);
+    this.cache.set(k, out);
+    return out;
+  }
+
+  /** Buildings whose lots may lie within r of (x, z). */
+  near(x: number, z: number, r = 40): Building[] {
+    const out: Building[] = [];
+    const c0x = Math.floor((x - r) / BUILDING_CELL);
+    const c1x = Math.floor((x + r) / BUILDING_CELL);
+    const c0z = Math.floor((z - r) / BUILDING_CELL);
+    const c1z = Math.floor((z + r) / BUILDING_CELL);
+    for (let cx = c0x; cx <= c1x; cx++) for (let cz = c0z; cz <= c1z; cz++) for (const b of this.cell(cx, cz)) out.push(b);
+    return out;
+  }
+
+  private generate(cx: number, cz: number): Building[] {
+    const net = this.net;
+    const x0 = cx * BUILDING_CELL;
+    const z0 = cz * BUILDING_CELL;
+    const out: Building[] = [];
+    const LOT = 26;
+    for (const id of edgesNear(net, x0 + BUILDING_CELL / 2, z0 + BUILDING_CELL / 2, BUILDING_CELL * 0.75 + 40)) {
+      const e = net.edges[id]!;
+      if (e.cls === 0) continue; // no frontage on motorways
+      const a = net.nodes[e.a]!;
+      const b = net.nodes[e.b]!;
+      const fx = (b.x - a.x) / e.length;
+      const fz = (b.z - a.z) / e.length;
+      const rot = Math.atan2(fx, fz);
+      const ra = Math.min(a.radius, e.length * 0.45) + 10;
+      const rb = e.length - Math.min(b.radius, e.length * 0.45) - 10;
+      for (let k = Math.ceil(ra / LOT); k * LOT <= rb; k++) {
+        const s = k * LOT;
+        for (const side of [-1, 1]) {
+          const rng = createRng(this.seed, `bld:${id}:${k}:${side}`);
+          if (rng.next() < 0.18) continue; // gaps: plots, gates, side streets
+          const w = 12 + rng.next() * 10; // along road
+          const d = 12 + rng.next() * 14; // depth
+          const off = e.halfWidth + 6 + d / 2;
+          // left of travel = (−fz, fx)
+          const x = a.x + fx * s - fz * off * side;
+          const z = a.z + fz * s + fx * off * side;
+          if (x < x0 || x >= x0 + BUILDING_CELL || z < z0 || z >= z0 + BUILDING_CELL) continue; // owned by another cell
+          // Keep every carriageway (incl. other roads) clear.
+          const n = nearestEdge(net, x, z, 60);
+          if (n.clearance < Math.hypot(w, d) / 2 + 3) continue;
+          const tall = rng.next();
+          out.push({ x, z, w: d, d: w, h: 6 + Math.floor(tall * tall * tall * 45), tone: rng.next(), rot });
+        }
+      }
+    }
+    return out;
+  }
+}

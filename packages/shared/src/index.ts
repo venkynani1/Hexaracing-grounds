@@ -8,3 +8,4 @@ export * from './protocol';
 export * from './sim';
 export * from './net';
 export * from './squad';
+export * from './map';

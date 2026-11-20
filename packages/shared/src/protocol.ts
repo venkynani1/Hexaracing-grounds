@@ -46,6 +46,7 @@ export interface Roster {
   teamId: string;
   name: string;
   joinCode: string;
+  startLocation: string | null;
   players: RosterPlayer[];
   full: boolean;
 }
@@ -132,6 +133,9 @@ export interface NetCar {
   rs: boolean;
   /** active buffs [kind, remaining ms] — client prediction applies the same modifiers */
   bf: [BuffKind, number][];
+  /** course code (start location) and index of the next checkpoint (== count passed) */
+  cs: string;
+  cp: number;
 }
 
 export const CAR_FLAG_BRAKING = 1;
@@ -168,6 +172,20 @@ export interface MapMessage {
 export interface WorldInfo {
   seed: string;
   mapVersion: string;
+  map: 'test' | 'chennai';
+}
+
+export interface StartLocationInfo {
+  code: string;
+  name: string;
+  verified: boolean;
+  /** selectable = verified AND enabled AND below capacity */
+  selectable: boolean;
+  taken: number;
+  capacity: number;
+  reason?: string;
+  via: string[];
+  courseKm: number;
 }
 
 export interface WorldStatus {

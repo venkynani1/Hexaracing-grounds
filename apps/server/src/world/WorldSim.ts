@@ -2,22 +2,26 @@ import {
   BALANCE,
   CAR_RADIUS,
   NEUTRAL_INPUT,
-  SPAWN_DE,
   TRAFFIC_TYPES,
   TrafficSystem,
   VEHICLES,
   applyImpact,
-  createTestNetwork,
   driveEnv,
   forwardSpeed,
   generateBuildings,
+  ProceduralBuildings,
+  deStart,
+  deStop,
+  testMap,
+  type WorldMap,
+  type CourseDef,
   initialVehicleState,
   isOnRoad,
   lanePoint,
+  nearestEdge,
   deHeading,
   wrapAngle,
   resolveStatic,
-  spawnSlots,
   stepVehicle,
   type Building,
   type RoadNetwork,
@@ -35,6 +39,7 @@ export const SIM_DT_MS = 50;
 /** Inputs older than this many ticks → the car is treated as disconnected and AI-brakes (DESIGN §4). */
 const STALE_INPUT_TICKS = 20;
 const MAX_QUEUE = 6;
+export const CHECKPOINT_RADIUS = 25;
 /** Input budget (anti speed-hack): +1 per tick, capped. A car can never apply more inputs than ticks elapsed + cap. */
 export const INPUT_BUDGET_MAX = 10;
 /** Max inputs applied per tick when catching up after jitter. */
@@ -74,8 +79,19 @@ export interface SimCar {
   freeReset: boolean;
   stuckMs: number;
   inputBudget: number;
+  /** Course (start location code) and next checkpoint index on the shared map. */
+  course: string;
+  nextCp: number;
   /** Active buffs: kind → simMs expiry. Effects are applied in the shared model (client predicts them too). */
   buffs: Map<BuffKind, number>;
+}
+
+export interface CheckpointPass {
+  teamId: string;
+  checkpointId: string;
+  index: number;
+  tick: number;
+  speed: number;
 }
 
 export interface Penalty {
@@ -101,8 +117,14 @@ export interface Contact {
  * one weather state. Fixed 20 Hz step. No I/O here — WorldRoom drives it and streams snapshots.
  */
 export class WorldSim {
+  readonly map: WorldMap;
   readonly net: RoadNetwork;
+  /** Static obstacles near a point (test grid: fixed list; real maps: procedural per cell). */
+  readonly buildingsNear: (x: number, z: number) => Building[];
+  /** Test grid only (kept for tests that inspect buildings directly). */
   readonly buildings: Building[];
+  /** Checkpoint passes since the last drain (WorldRoom persists them). */
+  checkpointPasses: CheckpointPass[] = [];
   readonly traffic: TrafficSystem;
   readonly cars = new Map<string, SimCar>();
   tick = 0;
@@ -115,26 +137,51 @@ export class WorldSim {
   /** Called when a car is ghosted (WorldRoom audit-logs it). */
   onPenalty: ((p: Penalty) => void) | null = null;
 
-  constructor(readonly opts: { seed: string; trafficCount?: number }) {
-    this.net = createTestNetwork();
-    this.buildings = generateBuildings(this.net, opts.seed);
+  constructor(readonly opts: { seed: string; trafficCount?: number; map?: WorldMap }) {
+    this.map = opts.map ?? testMap();
+    this.net = this.map.net;
+    if (this.map.id === 'test') {
+      this.buildings = generateBuildings(this.net, opts.seed);
+      this.buildingsNear = () => this.buildings;
+    } else {
+      const pb = new ProceduralBuildings(this.net, opts.seed);
+      this.buildings = [];
+      this.buildingsNear = (x, z) => pb.near(x, z, 40);
+    }
+    // Traffic lives on the course corridors of a real map (one shared traffic state for everyone).
+    const courses = Object.values(this.map.courses);
+    const corridor = courses.length ? [...new Set(courses.flatMap((c) => c.des.flatMap((de) => [de, de ^ 1])))] : undefined;
+    const spawnEdges = courses.flatMap((c) => c.des.slice(0, 4));
     this.traffic = new TrafficSystem(this.net, {
       seed: opts.seed,
       count: opts.trafficCount ?? BALANCE.trafficAgents,
-      excludeDe: [SPAWN_DE],
+      excludeDe: this.map.id === 'test' ? [0] : spawnEdges,
+      spawnDe: corridor,
     });
+  }
+
+  courseOf(car: SimCar): CourseDef | undefined {
+    return this.map.courses[car.course];
   }
 
   get simMs() {
     return this.tick * SIM_DT_MS;
   }
 
-  /** Place squad cars on the spawn grid in registration order (deterministic). Idempotent per team. */
-  spawn(teams: { teamId: string; name: string; vehicle?: VehicleCode | null }[]) {
-    const slots = spawnSlots(this.net, BALANCE.maxSquads, SPAWN_DE);
-    teams.forEach((t, i) => {
+  /**
+   * Place squad cars on their start location's spawn grid, in registration order (deterministic).
+   * Idempotent per team. `start` defaults to the map's first verified start.
+   */
+  spawn(teams: { teamId: string; name: string; vehicle?: VehicleCode | null; start?: string | null }[]) {
+    const used = new Map<string, number>();
+    for (const c of this.cars.values()) used.set(c.course, (used.get(c.course) ?? 0) + 1);
+    const fallback = this.map.starts.find((s) => s.verified)!;
+    teams.forEach((t) => {
       if (this.cars.has(t.teamId)) return;
-      const slot = slots[i % slots.length]!;
+      const start = this.map.starts.find((s) => s.code === t.start && s.verified) ?? fallback;
+      const n = used.get(start.code) ?? 0;
+      used.set(start.code, n + 1);
+      const slot = start.spawn[n % start.spawn.length]!;
       const params = VEHICLES[t.vehicle ?? 'vortex_gt'];
       this.cars.set(t.teamId, {
         cid: this.cars.size + 1,
@@ -142,6 +189,8 @@ export class WorldSim {
         name: t.name,
         params,
         state: initialVehicleState(slot.x, slot.z, slot.heading, BALANCE.startFuelPct),
+        course: start.code,
+        nextCp: 0,
         queue: [],
         lastInput: NEUTRAL_INPUT,
         lastSeq: 0,
@@ -191,26 +240,19 @@ export class WorldSim {
       else return false;
     }
     const net = this.net;
-    let best = { de: 0, s: 0, d: Infinity };
-    for (const e of net.edges) {
-      const a = net.nodes[e.a]!;
-      const b = net.nodes[e.b]!;
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      const t = Math.max(0, Math.min(1, ((car.state.x - a.x) * dx + (car.state.z - a.z) * dz) / (dx * dx + dz * dz)));
-      const d = Math.hypot(car.state.x - (a.x + dx * t), car.state.z - (a.z + dz * t));
-      if (d < best.d) {
-        const fwd = Math.abs(wrapAngle(deHeading(net, e.id * 2) - car.state.heading)) <= Math.PI / 2;
-        best = { de: fwd ? e.id * 2 : e.id * 2 + 1, s: fwd ? t * e.length : (1 - t) * e.length, d };
-      }
-    }
+    const ne = nearestEdge(net, car.state.x, car.state.z, 400);
+    const e0 = net.edges[Math.max(0, ne.edge)]!;
+    const fwd = !e0.oneway ? Math.abs(wrapAngle(deHeading(net, e0.id * 2) - car.state.heading)) <= Math.PI / 2 : true;
+    const best = { de: fwd ? e0.id * 2 : e0.id * 2 + 1, s: fwd ? ne.t * e0.length : (1 - ne.t) * e0.length };
     const len = net.edges[best.de >> 1]!.length;
-    let s = Math.max(net.junctionRadius + 3, Math.min(len - net.junctionRadius - 3, best.s));
+    const lo = Math.min(deStart(net, best.de) + 3, len / 2);
+    const hi = Math.max(deStop(net, best.de) - 3, len / 2);
+    let s = Math.max(lo, Math.min(hi, best.s));
     let p = lanePoint(net, best.de, 0, s);
     for (let i = 0; i < 12; i++) {
       const clear = [...this.cars.values()].every((o) => o === car || Math.hypot(o.state.x - p.x, o.state.z - p.z) > 6);
       if (clear) break;
-      s = Math.min(len - net.junctionRadius - 3, s + 8);
+      s = Math.min(hi, s + 8);
       p = lanePoint(net, best.de, i % 2, s);
     }
     car.state = { ...car.state, x: p.x, z: p.z, heading: p.heading, vx: 0, vz: 0 };
@@ -295,7 +337,7 @@ export class WorldSim {
     const input = this.released ? raw : NEUTRAL_INPUT;
     const env = driveEnv(isOnRoad(this.net, car.state.x, car.state.z), this.rain);
     let s = stepVehicle(car.state, input, this.effectiveParams(car), env, dt);
-    const hit = resolveStatic(s, this.buildings, this.net.bounds);
+    const hit = resolveStatic(s, this.buildingsNear(s.x, s.z), this.net.bounds);
     s = hit.impact > 0 ? applyImpact(hit.state, hit.impact, car.params) : hit.state;
     car.state = s;
     car.braking = input.brake > 0.1 && forwardSpeed(s) > 0.5;
@@ -303,6 +345,17 @@ export class WorldSim {
     if (this.released && input.throttle > 0.5 && v < STUCK.speed) car.stuckMs += SIM_DT_MS;
     else if (v >= STUCK.speed) car.stuckMs = 0;
     if (car.stuckMs >= STUCK.autoMs) this.resetCar(car.teamId, 'auto');
+    this.checkCheckpoint(car);
+  }
+
+  /** Checkpoints must be passed in order (gate radius 25 m). Passes are queued for persistence. */
+  private checkCheckpoint(car: SimCar) {
+    const course = this.courseOf(car);
+    const cp = course?.checkpoints[car.nextCp];
+    if (!cp) return;
+    if (Math.hypot(car.state.x - cp.x, car.state.z - cp.z) > CHECKPOINT_RADIUS) return;
+    this.checkpointPasses.push({ teamId: car.teamId, checkpointId: cp.id, index: car.nextCp, tick: this.tick, speed: Math.hypot(car.state.vx, car.state.vz) });
+    car.nextCp++;
   }
 
   /** Squad car vs squad car: equal-mass, symmetric, server-resolved. Anti-ramming arrives in M3. */

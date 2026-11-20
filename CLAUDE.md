@@ -56,13 +56,16 @@ npm run typecheck    # tsc for every workspace
 npm run build        # vite build of apps/web
 npm run db:generate -- --name <change>   # drizzle-kit generate (packages/db/migrations)
 npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server also migrates on boot)
+npm run map:extract  # PBF → tools/mapbuild/data/raw/chennai-extract.json (needs pyosmium + the PBF; see M5 notes)
+npm run map:build    # extract → packages/shared/src/map/chennai.map.json (graph, verified starts, calibrated courses)
+npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-key <key> --start
 ```
 
 ## Environment variables
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M4 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M5 (Chennai geography: OSM road graph, verified start locations, route normalisation, attribution).
+M1–M5 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M6 (fuel & pit stops, Redline Director world events, weather).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -94,3 +97,11 @@ M1–M4 implemented and tested locally (M2's manual phone-FPS check still open) 
 - HTTP: `/api/squad/*` (Bearer session; role checks in the service). WS: `{t:'squad', view}` pushed per connection.
 - `ALLOW_TIME_WARP=true` enables `POST /api/host/warp` (rehearsal/tests only; audit-logged). Never on event day.
 - `apps/web/src/pages/RoleConsole.tsx` — Engineer/Deceiver/Captain consoles; Racer gets clue + waypoint arrow in `RacerView`.
+
+## Code map (M5)
+- `tools/mapbuild/extract.py` — pyosmium: OSM PBF (download.openstreetmap.fr `tamil_nadu`; Overpass/Geofabrik were unreachable from the cloud env) → roads motorway–tertiary + signals + named reference features in the Chennai bbox. Raw data is gitignored.
+- `tools/mapbuild/src/build.ts` — graph (split at junctions, DP-simplify 3 m, largest SCC respecting one-ways), signals from OSM, start verification against exact OSM elements (ids in `START_OSM`, destination `n6572344272` "Hexaware Technologies"), uniform scale calibration, courses (landmark vias + one named junction refinement) to the 30-min reference target, 10 equal-time checkpoints, 6-slot staggered spawn grids.
+- `packages/shared/src/map/` — `WorldMap` types/decoder, `testMap()`, and `@redline/shared/map/chennai` (separate entry; ~0.9 MB ODbL-derived JSON; lazy chunk on the web).
+- `packages/shared/src/sim/road.ts` — per-edge width/lanes/one-way, node stop-line radius + signal axis, spatial index (`nearestEdge`, `edgesNear`), oriented-box building collision, `ProceduralBuildings` (per 200 m cell, same on server and client). `sim/reference.ts` — reference driver used for calibration and tests.
+- Server: `MAP` env (`chennai` default, `test` for unit tests — test helper defaults to test), start-location selection (`/api/start-locations`, `/api/team/start-location`, capacity 6, auto-assign at START), DB sync of `start_locations` (+ `verified_at`) and `world_metadata`, checkpoint detection → `vehicle_checkpoints`.
+- Web: cell-streamed scene (400 m cells), cached full-map minimap with course + checkpoints, checkpoint guidance HUD, StartPicker, `/credits`, OSM attribution in racer HUD and host map.

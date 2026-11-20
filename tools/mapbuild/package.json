@@ -1,0 +1,11 @@
+{
+  "name": "@redline/mapbuild",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsx src/build.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": { "@redline/shared": "*", "tsx": "^4.23.0" }
+}

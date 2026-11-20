@@ -1,4 +1,4 @@
-import type { HostOverview, Role, Roster, SessionResponse, SquadPreview, ClockState } from '@redline/shared';
+import type { HostOverview, Role, Roster, SessionResponse, SquadPreview, ClockState, StartLocationInfo } from '@redline/shared';
 
 const BASE = (import.meta.env.VITE_SERVER_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -24,7 +24,9 @@ async function req<T>(method: string, path: string, body?: unknown, headers: Rec
 }
 
 export const api = {
-  event: () => req<{ eventName: string; clock: ClockState; registrationOpen: boolean }>('GET', '/api/event'),
+  event: () => req<{ eventName: string; clock: ClockState; registrationOpen: boolean; map: 'test' | 'chennai' }>('GET', '/api/event'),
+  startLocations: () => req<StartLocationInfo[]>('GET', '/api/start-locations'),
+  setStartLocation: (token: string, code: string) => req<{ ok: true }>('POST', '/api/team/start-location', { code }, { authorization: `Bearer ${token}` }),
   createSquad: (squadName: string, displayName: string) => req<SessionResponse>('POST', '/api/squads', { squadName, displayName }),
   preview: (code: string) => req<SquadPreview>('GET', `/api/squads/${encodeURIComponent(code)}`),
   join: (code: string, displayName: string, role: Role) => req<SessionResponse>('POST', '/api/squads/join', { code, displayName, role }),

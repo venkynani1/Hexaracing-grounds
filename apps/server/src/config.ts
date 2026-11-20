@@ -19,6 +19,8 @@ export interface ServerConfig {
   trafficCount: number;
   /** Rehearsal/test only: allow POST /api/host/warp. Never enable on event day. */
   allowTimeWarp: boolean;
+  /** 'chennai' (OSM-derived, default) or 'test' (synthetic grid for unit tests). */
+  map: 'chennai' | 'test';
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -45,7 +47,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     directorIntervalMs: 250,
     countdownMs: Number(env.COUNTDOWN_MS ?? BALANCE.countdownMs),
     releaseAtMs: Number(env.RELEASE_AT_MS ?? BALANCE.releaseAtMs),
-    trafficCount: Number(env.TRAFFIC_AGENTS ?? BALANCE.trafficAgents),
+    trafficCount: Number(env.TRAFFIC_AGENTS ?? (env.MAP === 'test' ? BALANCE.trafficAgents : BALANCE.trafficAgentsChennai)),
     allowTimeWarp: env.ALLOW_TIME_WARP === 'true',
+    map: env.MAP === 'test' ? 'test' : 'chennai',
   };
 }

@@ -30,15 +30,20 @@ export class Predictor {
   /** Recent inputs, repeated in each message for loss tolerance. */
   private history: InputTuple[] = [];
 
+  private readonly staticNear: (x: number, z: number) => readonly Building[];
+
+  /** `buildings`: a fixed list (test grid) or a lookup of obstacles near a point (procedural cells on real maps). */
   constructor(
     private readonly net: RoadNetwork,
-    private readonly buildings: Building[],
-  ) {}
+    buildings: readonly Building[] | ((x: number, z: number) => readonly Building[]),
+  ) {
+    this.staticNear = typeof buildings === 'function' ? buildings : () => buildings;
+  }
 
   private simulate(s: VehicleState, input: VehicleInput): VehicleState {
     const env = driveEnv(isOnRoad(this.net, s.x, s.z), this.rain);
     const next = stepVehicle(s, this.released ? input : NEUTRAL_INPUT, this.params, env, DT);
-    const hit = resolveStatic(next, this.buildings, this.net.bounds);
+    const hit = resolveStatic(next, this.staticNear(next.x, next.z), this.net.bounds);
     return hit.impact > 0 ? applyImpact(hit.state, hit.impact, this.params) : hit.state;
   }
 

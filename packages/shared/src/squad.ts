@@ -88,7 +88,7 @@ export function applyBuffs(p: VehicleParams, active: readonly BuffKind[]): Vehic
 
 /* ---------------- Captain navigation ---------------- */
 
-/** Named waypoints on the test network (node ids). M5 replaces these with Chennai landmarks. */
+/** Named waypoints on the TEST network (node ids). Real maps carry their own (`WorldMap.waypoints`). */
 export const WAYPOINTS = [
   { id: 'north_gate', label: 'North Gate', node: 13 },
   { id: 'east_flyover', label: 'East Flyover', node: 11 },
@@ -96,7 +96,7 @@ export const WAYPOINTS = [
   { id: 'south_market', label: 'South Market', node: 2 },
   { id: 'west_depot', label: 'West Depot', node: 4 },
 ] as const;
-export type WaypointId = (typeof WAYPOINTS)[number]['id'];
+export type WaypointId = string;
 
 /* ---------------- Per-player views (server → client) ---------------- */
 
@@ -154,6 +154,10 @@ export interface SquadView {
   challenges: ChallengeView[];
   inventory: Record<PowerUpKind, number>;
   waypoint: WaypointId | null;
+  /** This squad's course (start location code) on the shared map, if any. */
+  course: string | null;
+  /** Waypoints the Captain can choose on this map. */
+  waypoints: { id: WaypointId; label: string }[];
   buffs: { kind: BuffKind; remainingMs: number }[];
   score: { total: number; byCategory: Record<ScoringCategory, number> };
 }

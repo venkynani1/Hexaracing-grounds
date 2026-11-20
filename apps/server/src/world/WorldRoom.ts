@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
-import { events, eventStates, players, type DbHandle } from '@redline/db';
+import { events, eventStates, players, vehicleCheckpoints, type DbHandle } from '@redline/db';
 import {
   BALANCE,
   beatsBetween,
@@ -185,7 +185,22 @@ export class WorldRoom {
   /** Spawn every registered squad's car (registration order). Called at START and on boot of a started event. */
   async spawnCars() {
     const teams = await this.registration.listTeams();
-    this.sim.spawn(teams.map((t) => ({ teamId: t.id, name: t.name, vehicle: null })));
+    this.sim.spawn(teams.map((t) => ({ teamId: t.id, name: t.name, vehicle: null, start: t.startCode })));
+  }
+
+  /** Persist checkpoint passes (idempotent: unique(team, checkpoint)). Live state stays in memory. */
+  private async flushCheckpoints() {
+    if (!this.sim.checkpointPasses.length) return;
+    const passes = this.sim.checkpointPasses.splice(0);
+    const elapsedMs = this.clock.elapsedMs(this.now());
+    try {
+      await this.dbh.db
+        .insert(vehicleCheckpoints)
+        .values(passes.map((p) => ({ teamId: p.teamId, checkpointId: p.checkpointId, tick: p.tick, elapsedMs, speed: p.speed })))
+        .onConflictDoNothing();
+    } catch (e) {
+      console.error('[checkpoints]', e);
+    }
   }
 
   /**
@@ -211,6 +226,7 @@ export class WorldRoom {
       this.recordStep(performance.now() - t0, t);
     }
     this.loopCount++;
+    if (this.sim.checkpointPasses.length) void this.flushCheckpoints();
     this.broadcastWorld(steps > 0);
   }
 
@@ -247,6 +263,8 @@ export class WorldRoom {
       g: this.sim.isGhost(c),
       rs: this.sim.canReset(c),
       bf: this.sim.activeBuffs(c.teamId).map((b) => [b.kind, b.remainingMs] as [typeof b.kind, number]),
+      cs: c.course,
+      cp: c.nextCp,
     };
   }
 
@@ -463,6 +481,7 @@ export class WorldRoom {
     // REGISTRATION_OPEN → REGISTRATION_LOCKED → COUNTDOWN, each transition recorded.
     this.clock.lockRegistration();
     await this.persist(this.clock.snapshot(t), 'host:start:lock_registration');
+    await this.registration.autoAssignStarts(this.sim.map.starts.filter((s) => s.verified).map((s) => s.code));
     this.clock.start(t);
     await this.spawnCars();
     await this.squad?.activate([...this.sim.cars.keys()]);
@@ -567,6 +586,7 @@ export class WorldRoom {
       teamId: team.id,
       name: team.name,
       joinCode: team.joinCode,
+      startLocation: team.startCode,
       full: team.players.length >= BALANCE.squadSize,
       players: team.players.map((p) => ({
         playerId: p.id,

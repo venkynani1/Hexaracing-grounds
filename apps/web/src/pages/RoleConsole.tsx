@@ -3,7 +3,6 @@ import {
   POWER_UPS,
   ROLE_LABEL,
   SCORING_CAPS,
-  WAYPOINTS,
   formatClock,
   type ChallengeView,
   type PowerUpKind,
@@ -271,7 +270,7 @@ function CaptainPanel({ view, token }: { view: SquadView; token: string }) {
       </header>
       <div className="eyebrow">Navigation — sets the Racer’s waypoint</div>
       <div className="opts wrap">
-        {WAYPOINTS.map((w) => (
+        {view.waypoints.map((w) => (
           <button key={w.id} className={`btn opt ${view.waypoint === w.id ? 'selected' : ''}`} disabled={busy} onClick={() => run(() => api.squad.waypoint(token, w.id))} data-testid={`wp-${w.id}`}>
             {w.label}
           </button>

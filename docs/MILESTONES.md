@@ -48,10 +48,12 @@ Status: all in `apps/server/test/multiplayer.test.ts`, passing locally. Real-tim
 Status: `apps/server/test/squad.test.ts` (+ `content.test.ts`, which executes every generated snippet to verify answer keys) and `apps/web/e2e/lobby.spec.ts` pass locally. First GitHub Actions run still to be observed.
 
 ## M5 — Chennai geography
-- [ ] mapbuild produces a connected graph: every enabled start location has a path to Hexaware (graph test).
-- [ ] All start locations verified (coordinates stored with `verified_at`); disabled ones not selectable.
-- [ ] Route calibration: reference-car simulated time for every route within ±10% after normalisation.
-- [ ] OSM attribution visible in-game and in credits.
+- [x] mapbuild produces a connected graph: every enabled start location has a path to Hexaware (graph test).
+- [x] All start locations verified (coordinates stored with `verified_at`); disabled ones not selectable.
+- [x] Route calibration: reference-car simulated time for every route within ±10% after normalisation. (Measured: 29.4–30.8 min vs 30-min target.)
+- [x] OSM attribution visible in-game and in credits.
+
+Status: `apps/server/test/chennai.test.ts` + `apps/web/e2e/lobby.spec.ts` (M5 test) pass locally. First GitHub Actions run still to be observed.
 
 ## M6 — Fuel & suspense
 - [ ] Pit-stop 6-step flow end-to-end with four roles; FIFO queue; max dwell enforced; station never blocked.

@@ -4,10 +4,12 @@
  * and by the real-time load-test CLI.
  */
 import WebSocket from 'ws';
+import { chennaiMap } from '@redline/shared/map/chennai';
 import {
   Predictor,
-  createTestNetwork,
+  ProceduralBuildings,
   generateBuildings,
+  testMap,
   NEUTRAL_INPUT,
   type ClientMessage,
   type MapMessage,
@@ -81,8 +83,13 @@ export class Bot {
     if (w.t !== 'welcome' || w.kind !== 'player') throw new Error(`${this.label}: hello failed ${JSON.stringify(w)}`);
     this.roomId = w.roomId;
     this.seed = w.world.seed;
-    const net = createTestNetwork();
-    this.predictor = new Predictor(net, generateBuildings(net, this.seed));
+    // Same map + same procedural obstacles as the server, so prediction matches.
+    const map = w.world.map === 'chennai' ? chennaiMap() : testMap();
+    if (map.id === 'test') this.predictor = new Predictor(map.net, generateBuildings(map.net, this.seed));
+    else {
+      const pb = new ProceduralBuildings(map.net, this.seed);
+      this.predictor = new Predictor(map.net, (x, z) => pb.near(x, z, 40));
+    }
   }
 
   private onMessage(raw: string) {

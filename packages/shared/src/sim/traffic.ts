@@ -4,11 +4,13 @@
  */
 import { createRng, type Rng } from '../rng';
 import {
-  axisOfHeading,
   deEnds,
   deHeading,
   deReverse,
+  deStart,
+  deStop,
   lanePoint,
+  signalGroup,
   signalState,
   type RoadNetwork,
   type SignalColor,
@@ -64,6 +66,8 @@ export interface TrafficOptions {
   count: number;
   /** Directed edges where no traffic spawns initially (e.g. squad spawn grid). */
   excludeDe?: number[];
+  /** If given, traffic only spawns on these directed edges (e.g. the course corridors of a large map). */
+  spawnDe?: number[];
   signal?: SignalFn;
 }
 
@@ -80,19 +84,32 @@ export class TrafficSystem {
   ) {
     this.rng = createRng(opts.seed, 'traffic');
     const seed = opts.seed;
-    this.signal = opts.signal ?? ((node, heading, ms) => signalState(node, axisOfHeading(heading), ms, seed));
-    this.spawn(opts.count, new Set(opts.excludeDe ?? []));
+    this.signal = opts.signal ?? ((node, heading, ms) => signalState(node, signalGroup(net, node, heading), ms, seed));
+    this.exclude = new Set(opts.excludeDe ?? []);
+    this.spawnPool = this.slots(opts.spawnDe);
+    this.spawn(opts.count);
   }
 
-  private spawn(count: number, exclude: Set<number>) {
+  private readonly exclude: Set<number>;
+  private readonly spawnPool: { de: number; lane: number; s: number }[];
+  private nextId = 1;
+
+  private slots(only?: number[]) {
     const net = this.net;
     const slots: { de: number; lane: number; s: number }[] = [];
-    for (let de = 0; de < net.edges.length * 2; de++) {
-      if (exclude.has(de)) continue;
-      const len = net.edges[de >> 1]!.length;
-      for (let lane = 0; lane < net.edges[de >> 1]!.lanes; lane++)
-        for (let s = net.junctionRadius + 10; s < len - net.junctionRadius - 30; s += 24) slots.push({ de, lane, s });
+    const des = only ?? [...Array(net.edges.length * 2).keys()];
+    for (const de of des) {
+      const e = net.edges[de >> 1]!;
+      if (this.exclude.has(de) || (e.oneway && de & 1)) continue;
+      const s0 = deStart(net, de);
+      const s1 = deStop(net, de);
+      for (let lane = 0; lane < e.lanes; lane++) for (let s = s0 + 6; s < s1 - 10; s += 24) slots.push({ de, lane, s });
     }
+    return slots;
+  }
+
+  private spawn(count: number) {
+    const slots = [...this.spawnPool];
     for (let i = slots.length - 1; i > 0; i--) {
       const j = this.rng.int(i + 1);
       [slots[i], slots[j]] = [slots[j]!, slots[i]!];
@@ -101,8 +118,33 @@ export class TrafficSystem {
       const r = this.rng.next();
       const type: TrafficType = r < 0.6 ? 'car' : r < 0.8 ? 'motorcycle' : r < 0.9 ? 'bus' : 'truck';
       const sl = slots[i]!;
-      this.agents.push({ id: i + 1, type, de: sl.de, lane: sl.lane, laneF: sl.lane, s: sl.s, speed: 0, cruise: 0.85 + this.rng.next() * 0.2, conn: null, blocked: false });
+      this.agents.push({ id: this.nextId++, type, de: sl.de, lane: sl.lane, laneF: sl.lane, s: sl.s, speed: 0, cruise: 0.85 + this.rng.next() * 0.2, conn: null, blocked: false });
     }
+  }
+
+  /** Move an agent that hit a sink (no legal exit) back to a free spawn slot. Deterministic. */
+  private respawn(a: TrafficAgent) {
+    for (let tries = 0; tries < 20 && this.spawnPool.length; tries++) {
+      const sl = this.spawnPool[this.rng.int(this.spawnPool.length)]!;
+      const clear = this.agents.every((b) => b === a || b.conn || b.de !== sl.de || b.lane !== sl.lane || Math.abs(b.s - sl.s) > 15);
+      if (!clear) continue;
+      Object.assign(a, { de: sl.de, lane: sl.lane, laneF: sl.lane, s: sl.s, speed: 0, conn: null });
+      return;
+    }
+    a.speed = 0;
+  }
+
+  /** Seeded weighted choice of the next edge: major roads are preferred, no U-turns unless it's a dead end. */
+  private chooseNext(a: TrafficAgent, toId: number): number | null {
+    const net = this.net;
+    const legal = net.out[toId]!;
+    let options = legal.filter((d) => d !== deReverse(a.de));
+    if (!options.length) options = legal;
+    if (!options.length) return null;
+    const w = options.map((d) => 1 / (1 + net.edges[d >> 1]!.cls));
+    let r = this.rng.next() * w.reduce((x, y) => x + y, 0);
+    for (let i = 0; i < options.length; i++) if ((r -= w[i]!) <= 0) return options[i]!;
+    return options[options.length - 1]!;
   }
 
   pose(a: TrafficAgent): TrafficPose {
@@ -136,8 +178,7 @@ export class TrafficSystem {
       if (g < gap) (gap = g), (leadSpeed = v);
     };
     if (!a.conn) {
-      const len = net.edges[a.de >> 1]!.length;
-      const stopS = len - net.junctionRadius;
+      const stopS = deStop(net, a.de);
       // Leaders on the same directed edge, same (or target) lane.
       for (const b of byDe.get(a.de) ?? []) {
         if (b === a || b.s <= a.s) continue;
@@ -171,7 +212,8 @@ export class TrafficSystem {
     const pa = poses.get(a.id)!;
     for (const o of obstacles) {
       const ahead = this.along(a, pa, o);
-      if (ahead && ahead.d > 0 && ahead.d < 45 && ahead.lat < me.width / 2 + 1.6) consider(ahead.d - me.length / 2 - 2.2, 0);
+      // Squad car ≈ 2 m wide: block until there is ≥ 1.1 m of side clearance.
+      if (ahead && ahead.d > -1 && ahead.d < 45 && ahead.lat < me.width / 2 + 2.1) consider(Math.max(0, ahead.d) - me.length / 2 - 2.2, 0);
     }
     return { gap, leadSpeed };
   }
@@ -182,7 +224,7 @@ export class TrafficSystem {
     const dx = p.x - pa.x;
     const dz = p.z - pa.z;
     const d = dx * fx + dz * fz;
-    if (d <= 0 || d > 60) return null;
+    if (d <= -1 || d > 60) return null;
     return { d, lat: Math.abs(dx * fz - dz * fx) };
   }
 
@@ -227,16 +269,15 @@ export class TrafficSystem {
           const over = a.s - a.conn.len;
           a.de = a.conn.toDe;
           a.conn = null;
-          a.s = net.junctionRadius + over;
+          a.s = deStart(net, a.de) + over;
         }
         return;
       }
-      const len = net.edges[a.de >> 1]!.length;
-      const stopS = len - net.junctionRadius;
+      const stopS = deStop(net, a.de);
       // Lane change toward the target lane.
       if (a.laneF !== a.lane) {
         const dir = Math.sign(a.lane - a.laneF);
-        a.laneF += dir * Math.min(Math.abs(a.lane - a.laneF), 0.5 * dt);
+        a.laneF += dir * Math.min(Math.abs(a.lane - a.laneF), 0.8 * dt);
       } else if (a.s < stopS - 60 && a.speed < 6 && this.rng.next() < 0.02) {
         this.tryLaneChange(a);
       }
@@ -244,11 +285,11 @@ export class TrafficSystem {
       if (a.s >= stopS) {
         // Enter the junction: pick an outgoing edge (no U-turn), seeded.
         const { to } = deEnds(net, a.de);
-        const options = net.out[to.id]!.filter((d) => d !== deReverse(a.de));
-        const toDe = options.length ? this.rng.pick(options) : deReverse(a.de);
+        const toDe = this.chooseNext(a, to.id);
+        if (toDe === null) return this.respawn(a);
         const lane = Math.min(a.lane, net.edges[toDe >> 1]!.lanes - 1);
         const from = lanePoint(net, a.de, a.laneF, stopS);
-        const dest = lanePoint(net, toDe, lane, net.junctionRadius);
+        const dest = lanePoint(net, toDe, lane, deStart(net, toDe));
         a.lane = lane;
         a.laneF = lane;
         a.conn = { toDe, ax: from.x, az: from.z, bx: dest.x, bz: dest.z, len: Math.max(1, Math.hypot(dest.x - from.x, dest.z - from.z)) };
@@ -259,6 +300,7 @@ export class TrafficSystem {
 
   private tryLaneChange(a: TrafficAgent) {
     const lanes = this.net.edges[a.de >> 1]!.lanes;
+    if (lanes < 2) return;
     const target = a.lane === 0 ? 1 : a.lane - 1;
     if (target < 0 || target >= lanes) return;
     const clear = this.agents.every((b) => b === a || b.conn || b.de !== a.de || b.lane !== target || Math.abs(b.s - a.s) > 14);

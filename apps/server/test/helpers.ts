@@ -22,6 +22,7 @@ export async function makeServer(over: Partial<ServerConfig> = {}, opts: { manua
     eventName: `test-event-${process.pid}-${++counter}`,
     joinAttemptsPerMinute: 10_000,
     host: '127.0.0.1',
+    map: 'test',
     ...over,
   };
   let t = 1_800_000_000_000;

@@ -16,7 +16,6 @@ import {
   ROLES,
   SQUAD_RUBRIC,
   STARTING_POWER_UPS,
-  WAYPOINTS,
   createRng,
   deriveTotals,
   phaseAt,
@@ -160,7 +159,7 @@ export class SquadService {
       } else if (sched.kind === 'navigation') {
         const dbId = await this.insertChallenge(sched.id, 'navigation', sched, SQUAD_RUBRIC.navigation.firstTry, 'CAPTAIN_STRATEGY');
         for (const teamId of teamIds) {
-          const v = navigationVariant(createRng(this.seed, `nav:${sched.id}:${teamId}`));
+          const v = navigationVariant(createRng(this.seed, `nav:${sched.id}:${teamId}`), this.sim.map);
           this.nav.set(`${sched.id}:${teamId}`, v);
           await this.insertVariant(dbId, teamId, { prompt: v.prompt, options: v.options }, v.answer);
         }
@@ -375,7 +374,7 @@ export class SquadService {
         points = a.attempts === 1 ? R.firstTry : R.secondTry;
         a.points = points;
         await this.award(actor.teamId, R.category, points, `navigation ${challengeId} attempt ${a.attempts}`, 'navigation', challengeId);
-        const wp = WAYPOINTS.find((w) => w.label === v.answer);
+        const wp = this.sim.map.waypoints.find((w) => w.label === v.answer);
         if (wp) this.teams.get(actor.teamId)!.waypoint = wp.id;
       }
       await this.submission(challengeId, actor, String(answer ?? ''), correct, points, key as string);
@@ -388,7 +387,7 @@ export class SquadService {
   async setWaypoint(actor: Actor, waypoint: unknown) {
     if (actor.role !== 'CAPTAIN') throw forbidden('WRONG_ROLE', 'Only the Captain sets navigation');
     if (!this.active) throw conflict('NOT_LIVE', 'Navigation opens when the event starts');
-    const wp = waypoint === null ? null : WAYPOINTS.find((w) => w.id === waypoint);
+    const wp = waypoint === null ? null : this.sim.map.waypoints.find((w) => w.id === waypoint);
     if (wp === undefined) throw badRequest('UNKNOWN_WAYPOINT', 'Unknown waypoint');
     this.teams.get(actor.teamId)!.waypoint = wp?.id ?? null;
     this.onTeamChanged(actor.teamId);
@@ -597,6 +596,8 @@ export class SquadService {
       challenges: out,
       inventory: { ...t.inventory },
       waypoint: t.waypoint,
+      course: this.sim.cars.get(teamId)?.course ?? null,
+      waypoints: this.sim.map.waypoints.map((w) => ({ id: w.id, label: w.label })),
       buffs: this.sim.activeBuffs(teamId),
       score: this.scoreOf(teamId),
     };

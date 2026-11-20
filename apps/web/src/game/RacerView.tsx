@@ -5,16 +5,16 @@ import {
   Interpolator,
   PHASES,
   Predictor,
-  createTestNetwork,
+  ProceduralBuildings,
   forwardSpeed,
   formatClock,
   generateBuildings,
+  type WorldMap,
   type ClockState,
   type ClientMessage,
   type MapMessage,
   type Snapshot,
   type SquadView,
-  WAYPOINTS,
 } from '@redline/shared';
 import { InputState, type Control } from './input';
 import { drawMap, type MapDot } from './minimap';
@@ -31,6 +31,7 @@ export interface RacerViewProps {
   send: (m: ClientMessage) => void;
   subscribe: (fn: (m: WorldFeed) => void) => () => void;
   squad: SquadView | null;
+  map: WorldMap;
 }
 
 interface Hud {
@@ -50,6 +51,12 @@ interface Hud {
   /** waypoint arrow: angle relative to car heading (rad) and distance (m) */
   wpAngle: number | null;
   wpDist: number;
+  /** next checkpoint guidance */
+  cpIndex: number;
+  cpTotal: number;
+  cpAngle: number | null;
+  cpDist: number;
+  cells: number;
 }
 
 const STEP_MS = 50;
@@ -68,18 +75,21 @@ export default function RacerView(props: RacerViewProps) {
 
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const net = createTestNetwork();
-    const buildings = generateBuildings(net, props.seed);
+    const map = props.map;
+    const net = map.net;
     let game: GameScene;
     try {
-      game = new GameScene(canvas, net, buildings, props.seed, quality);
+      game = new GameScene(canvas, map, props.seed, quality);
     } catch (e) {
       setError(`3D not available on this device: ${(e as Error).message}`);
       return;
     }
     gameRef.current = game;
     game.setMyCar(props.teamId);
-    const predictor = new Predictor(net, buildings);
+    // Same static obstacles as the server so prediction matches (procedural cells on real maps).
+    const pb = map.id === 'test' ? null : new ProceduralBuildings(net, props.seed);
+    const fixed = map.id === 'test' ? generateBuildings(net, props.seed) : [];
+    const predictor = new Predictor(net, pb ? (x: number, z: number) => pb.near(x, z, 40) : fixed);
     const others = new Interpolator<{ id: number; x: number; z: number; heading: number; flags: number }>();
     // Global map channel (1 Hz): every squad, always — names + far positions.
     const roster = new Map<number, { teamId: string; name: string; x: number; z: number; heading: number }>();
@@ -147,11 +157,16 @@ export default function RacerView(props: RacerViewProps) {
         const dots: MapDot[] = [];
         for (const [cid, r] of roster) if (cid !== myCid && !nearIds.has(cid)) dots.push({ id: cid, x: r.x, z: r.z, heading: r.heading, color: '#ff8a9a' });
         for (const c of near) dots.push({ id: c.id, x: c.x, z: c.z, heading: c.heading, ghost: (c.flags & CAR_FLAG_GHOST) !== 0 });
-        const wpNode = waypointNode(propsRef.current.squad);
-        if (wpNode) dots.push({ id: 'wp', x: wpNode.x, z: wpNode.z, heading: 0, color: '#38c8ff' });
+        const wpNode = waypointNode(map, propsRef.current.squad);
         if (pose) dots.push({ id: 'me', x: pose.x, z: pose.z, heading: pose.heading, me: true });
+        const course = lastMe?.cs ? map.courses[lastMe.cs] : undefined;
         const ctx = mapRef.current.getContext('2d');
-        if (ctx) drawMap(ctx, net, dots);
+        if (ctx)
+          drawMap(ctx, net, dots, {
+            route: course ? courseRoute(map, course.des) : undefined,
+            marks: course?.checkpoints.map((c, i) => ({ x: c.x, z: c.z, next: i === lastMe?.cp })),
+            target: wpNode,
+          });
       }
       game.updateTraffic(traffic.sample(serverNow));
       game.updateSignals(lastSnap.simMs + (live ? now - lastSnap.at : 0));
@@ -178,11 +193,23 @@ export default function RacerView(props: RacerViewProps) {
           ghost: !!lastMe?.g,
           canReset: !!lastMe?.rs,
           ...(() => {
-            const wp = waypointNode(propsRef.current.squad);
+            const wp = waypointNode(map, propsRef.current.squad);
             if (!wp) return { wpAngle: null, wpDist: 0 };
             const bearing = Math.atan2(wp.x - pose.x, wp.z - pose.z);
             return { wpAngle: bearing - pose.heading, wpDist: Math.hypot(wp.x - pose.x, wp.z - pose.z) };
           })(),
+          ...(() => {
+            const course = lastMe?.cs ? map.courses[lastMe.cs] : undefined;
+            const cp = course?.checkpoints[lastMe?.cp ?? 0];
+            if (!course || !cp) return { cpIndex: lastMe?.cp ?? 0, cpTotal: course?.checkpoints.length ?? 0, cpAngle: null, cpDist: 0 };
+            return {
+              cpIndex: lastMe!.cp,
+              cpTotal: course.checkpoints.length,
+              cpAngle: Math.atan2(cp.x - pose.x, cp.z - pose.z) - pose.heading,
+              cpDist: Math.hypot(cp.x - pose.x, cp.z - pose.z),
+            };
+          })(),
+          cells: game.loadedCells,
         });
       }
     });
@@ -197,7 +224,7 @@ export default function RacerView(props: RacerViewProps) {
     };
     // The scene is built once per mount; quality changes are applied below without rebuilding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.teamId, props.seed]);
+  }, [props.teamId, props.seed, props.map]);
 
   useEffect(() => gameRef.current?.setCameraMode(cam), [cam]);
   useEffect(() => {
@@ -264,14 +291,31 @@ export default function RacerView(props: RacerViewProps) {
           Safe reset to lane
         </button>
       )}
-      {props.squad && <RacerSquadHud squad={props.squad} hud={hud} />}
+      {props.squad && <RacerSquadHud squad={props.squad} hud={hud} map={props.map} />}
+      {hud && hud.cpTotal > 0 && (
+        <div className="cp-guide" data-testid="checkpoint-guide">
+          {hud.cpIndex < hud.cpTotal ? (
+            <>
+              <span className="wp-arrow" style={{ transform: `rotate(${hud.cpAngle ?? 0}rad)` }}>▲</span>
+              <span>
+                {hud.cpIndex === hud.cpTotal - 1 ? 'Hexaware Gate' : `Checkpoint ${hud.cpIndex + 1}/${hud.cpTotal}`} · {Math.round(hud.cpDist)} m
+              </span>
+            </>
+          ) : (
+            <span>All checkpoints cleared ✓</span>
+          )}
+        </div>
+      )}
+      <a className="attribution" href="/credits" target="_blank" rel="noreferrer" data-testid="osm-attribution">
+        {props.map.id === 'chennai' ? `Map data ${props.map.attribution} · Chennai at ${Math.round(props.map.scale * 100)}% scale` : 'Synthetic test map'}
+      </a>
       <canvas ref={mapRef} className="minimap" width={240} height={240} data-testid="minimap" aria-label="Map of all squads" />
       <div className="hud-speed" data-testid="hud-speed" data-speed={Math.round(hud?.speed ?? 0)}>
         <span>{Math.round(hud?.speed ?? 0)}</span>
         <small>km/h</small>
       </div>
       <div className="hud-debug mono">
-        {props.squadName} · traffic {hud?.traffic ?? 0} · squads near {hud?.others ?? 0} · res ×{(1 / (hud?.scale ?? 1)).toFixed(2)} · corr{' '}
+        {props.squadName} · traffic {hud?.traffic ?? 0} · squads near {hud?.others ?? 0} · cells {hud?.cells ?? 0} · res ×{(1 / (hud?.scale ?? 1)).toFixed(2)} · corr{' '}
         {(hud?.correction ?? 0).toFixed(2)} m
       </div>
       <div className="controls-left">
@@ -290,16 +334,28 @@ export default function RacerView(props: RacerViewProps) {
   );
 }
 
-const NET = createTestNetwork();
-function waypointNode(squad: SquadView | null) {
-  const wp = squad?.waypoint ? WAYPOINTS.find((w) => w.id === squad.waypoint) : null;
-  return wp ? NET.nodes[wp.node]! : null;
+function waypointNode(map: WorldMap, squad: SquadView | null) {
+  const wp = squad?.waypoint ? map.waypoints.find((w) => w.id === squad.waypoint) : null;
+  return wp ? map.net.nodes[wp.node]! : null;
+}
+
+const routeCache = new WeakMap<number[], { x: number; z: number }[]>();
+function courseRoute(map: WorldMap, des: number[]) {
+  let r = routeCache.get(des);
+  if (!r) {
+    r = des.map((de) => {
+      const e = map.net.edges[de >> 1]!;
+      return map.net.nodes[de & 1 ? e.a : e.b]!;
+    });
+    routeCache.set(des, r);
+  }
+  return r;
 }
 
 /** Racer's slice of squad play: own private clue, Captain's waypoint arrow, buffs. */
-function RacerSquadHud({ squad, hud }: { squad: SquadView; hud: Hud | null }) {
+function RacerSquadHud({ squad, hud, map }: { squad: SquadView; hud: Hud | null; map: WorldMap }) {
   const clue = squad.challenges.find((c) => c.status === 'open' && c.clue);
-  const wp = squad.waypoint ? WAYPOINTS.find((w) => w.id === squad.waypoint) : null;
+  const wp = squad.waypoint ? map.waypoints.find((w) => w.id === squad.waypoint) : null;
   return (
     <div className="racer-squad">
       {wp && hud?.wpAngle != null && (

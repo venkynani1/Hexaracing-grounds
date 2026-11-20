@@ -4,7 +4,10 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cors from '@fastify/cors';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { eq } from 'drizzle-orm';
-import { events, seedCatalogue, type DbHandle } from '@redline/db';
+import { eq as eqOp } from 'drizzle-orm';
+import { events, seedCatalogue, startLocations, worldMetadata, type DbHandle } from '@redline/db';
+import { testMap, type StartLocationInfo, type WorldMap } from '@redline/shared';
+import { chennaiMap } from '@redline/shared/map/chennai';
 import type { ClientMessage, ServerMessage } from '@redline/shared';
 import type { ServerConfig } from './config';
 import { TokenSigner, safeEqual } from './auth/tokens';
@@ -35,6 +38,33 @@ export interface BuildOptions {
 }
 
 /** Load the configured event, or create it on first boot. One process = one event = one WorldRoom. */
+/**
+ * Mirror the map's verified start locations and world metadata into Postgres. A location is enabled only when
+ * the map build verified it (coordinates matched to OSM + route to Hexaware); everything else is disabled.
+ */
+async function syncMapToDb(db: DbHandle, eventId: string, map: WorldMap) {
+  const verifiedAt = map.verifiedAt ? new Date(map.verifiedAt) : new Date();
+  const all = await db.db.select().from(startLocations);
+  for (const st of map.starts) {
+    const values = {
+      name: st.name,
+      lat: st.lat,
+      lon: st.lon,
+      worldX: st.x,
+      worldZ: st.z,
+      enabled: st.verified,
+      verifiedAt: st.verified ? verifiedAt : null,
+      maxSquads: map.maxSquadsPerStart,
+    };
+    await db.db.insert(startLocations).values({ code: st.code, ...values }).onConflictDoUpdate({ target: startLocations.code, set: values });
+  }
+  for (const row of all) if (!map.starts.some((st) => st.code === row.code)) await db.db.update(startLocations).set({ enabled: false }).where(eqOp(startLocations.id, row.id));
+  const [meta] = await db.db.select().from(worldMetadata).where(eqOp(worldMetadata.eventId, eventId)).limit(1);
+  const metaValues = { anchorLat: map.anchor.lat, anchorLon: map.anchor.lon, worldScale: map.scale, mapVersion: map.version, osmAttribution: map.attribution };
+  if (meta) await db.db.update(worldMetadata).set(metaValues).where(eqOp(worldMetadata.id, meta.id));
+  else await db.db.insert(worldMetadata).values({ eventId, ...metaValues });
+}
+
 async function loadOrCreateEvent(db: DbHandle, config: ServerConfig) {
   const [existing] = await db.db.select().from(events).where(eq(events.name, config.eventName)).limit(1);
   if (existing) return existing;
@@ -51,7 +81,9 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   await seedCatalogue(db.db);
   const event = await loadOrCreateEvent(db, config);
   const { clock, autoPaused } = clockFromEventRow(event, now(), config.countdownMs);
-  const sim = new WorldSim({ seed: String(event.seed), trafficCount: config.trafficCount });
+  const map: WorldMap = config.map === 'test' ? testMap() : chennaiMap();
+  await syncMapToDb(db, event.id, map);
+  const sim = new WorldSim({ seed: String(event.seed), trafficCount: config.trafficCount, map });
   const room = WorldRoom.create({ eventId: event.id, eventName: event.name, clock, db, now, sim, releaseAtMs: config.releaseAtMs });
   const signer = new TokenSigner(config.sessionSecret);
   const registration = new RegistrationService(db.db, signer, event.id, room.registrationOpen, now);
@@ -109,7 +141,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
 
   /* ---------- public ---------- */
   app.get('/api/health', async () => ({ ok: true, db: await db.ping(), roomId: room.roomId, clients: room.clients.size }));
-  app.get('/api/event', async () => ({ eventName: room.eventName, clock: room.clockState(), registrationOpen: room.registrationOpen() }));
+  app.get('/api/event', async () => ({ eventName: room.eventName, clock: room.clockState(), registrationOpen: room.registrationOpen(), map: map.id }));
 
   /* ---------- registration ---------- */
   app.post('/api/squads', { preHandler: limitJoin }, async (req, reply) => {
@@ -140,6 +172,32 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     await room.broadcastRoster(s.tid);
     const team = await registration.getTeam(s.tid);
     return { roster: room.toRoster(team!) };
+  });
+
+  /* ---------- start locations (M5) ---------- */
+  app.get('/api/start-locations', async (): Promise<StartLocationInfo[]> => {
+    const usage = await registration.startLocationUsage();
+    return map.starts.map((st) => {
+      const taken = usage.get(st.code) ?? 0;
+      const course = map.courses[st.code];
+      return {
+        code: st.code,
+        name: st.name,
+        verified: st.verified,
+        selectable: st.verified && taken < map.maxSquadsPerStart && room.registrationOpen(),
+        taken,
+        capacity: map.maxSquadsPerStart,
+        reason: st.reason,
+        via: course?.via ?? [],
+        courseKm: course ? Math.round(course.lengthM / 100) / 10 : 0,
+      };
+    });
+  });
+  app.post('/api/team/start-location', async (req) => {
+    const s = await requirePlayer(req);
+    await registration.setStartLocation(s.pid, ((req.body ?? {}) as { code?: unknown }).code);
+    await room.broadcastRoster(s.tid);
+    return { ok: true };
   });
 
   /* ---------- squad mechanics (M4) — role checks happen in SquadService ---------- */
@@ -244,7 +302,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
             roomId: room.roomId,
             roster: room.toRoster(team!),
             clock: room.clockState(),
-            world: { seed: sim.opts.seed, mapVersion: sim.net.version },
+            world: { seed: sim.opts.seed, mapVersion: sim.net.version, map: map.id },
           });
           room.sendSquadTo(ws);
           await room.broadcastRoster(s.tid);

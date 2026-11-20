@@ -11,4 +11,4 @@ A 60-minute live multiplayer racing event: 30 squads, 120 players, one shared 3D
 
 Working with Claude Code: open this repo and say "continue with the next milestone". `CLAUDE.md` carries the full context.
 
-Map data (when added) © OpenStreetMap contributors, ODbL.
+Map data © OpenStreetMap contributors, available under the ODbL 1.0 (see `packages/shared/src/map/CHENNAI_DATA_LICENSE.md` and /credits in the app).

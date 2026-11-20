@@ -3,7 +3,7 @@
  * Generators take a seeded RNG stream per (event, squad, challenge) so each squad gets an equivalent but
  * different variant (numbers/words differ, difficulty identical) — copying another squad's answer won't work.
  */
-import { WAYPOINTS, createTestNetwork, type Rng, type Role } from '@redline/shared';
+import { type Rng, type Role, type WorldMap } from '@redline/shared';
 
 export interface CodingVariant {
   prompt: string;
@@ -208,18 +208,21 @@ export const FOUR_KEY_TEMPLATES: Record<string, (rng: Rng) => FourKeyVariant> = 
 
 /* ---------------- Navigation (Captain) ---------------- */
 
-export function navigationVariant(rng: Rng): NavigationVariant {
-  const net = createTestNetwork();
-  const b = net.bounds;
-  const x = Math.round(b.minX + 60 + rng.next() * (b.maxX - b.minX - 120));
-  const z = Math.round(b.minZ + 60 + rng.next() * (b.maxZ - b.minZ - 120));
-  const wps = WAYPOINTS.map((w) => ({ ...w, n: net.nodes[w.node]! }));
+export function navigationVariant(rng: Rng, map: WorldMap): NavigationVariant {
+  const net = map.net;
+  const wpsAll = map.waypoints.map((w) => ({ ...w, n: net.nodes[w.node]! }));
+  // Map point drawn inside the hull of the waypoints so the question stays local and unambiguous-ish.
+  const xs = wpsAll.map((w) => w.n.x);
+  const zs = wpsAll.map((w) => w.n.z);
+  const x = Math.round(Math.min(...xs) + rng.next() * (Math.max(...xs) - Math.min(...xs)));
+  const z = Math.round(Math.min(...zs) + rng.next() * (Math.max(...zs) - Math.min(...zs)));
+  const wps = wpsAll.map((w) => ({ ...w, n: { x: Math.round(w.n.x), z: Math.round(w.n.z) } }));
   const dist = (w: (typeof wps)[number]) => Math.hypot(w.n.x - x, w.n.z - z);
   const sorted = [...wps].sort((a, c) => dist(a) - dist(c));
   // Avoid ambiguous ties: re-draw is unnecessary because positions are continuous; document coords.
   const list = wps.map((w) => `${w.label} (${w.n.x}, ${w.n.z})`).join('; ');
   return {
-    prompt: `Intel: a route lockdown is coming. Your squad car must regroup at the waypoint nearest to map point (${x}, ${z}) — straight-line distance, x = east, z = north. Waypoints: ${list}. Which one?`,
+    prompt: `Intel: a route lockdown is coming. Your squad car must regroup at the waypoint nearest to map point (${x}, ${z}) — straight-line distance in world metres from the Hexaware gate, x = east, z = north. Waypoints: ${list}. Which one?`,
     options: shuffle(rng, wps.map((w) => w.label)),
     answer: sorted[0]!.label,
   };

@@ -12,6 +12,8 @@ import {
   type SquadView,
 } from '@redline/shared';
 import { RoleConsole } from './RoleConsole';
+import { StartPicker } from './StartPicker';
+import { useWorldMap } from '../game/useWorldMap';
 import type { WorldFeed } from '../game/RacerView';
 import { api, HttpError } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -78,6 +80,7 @@ export function Lobby() {
     else if (m.t === 'roster') setRoster(m.roster);
     else if (m.t === 'clock') setClock(m.clock);
   }, []);
+  const worldMap = useWorldMap(world?.map);
   const { status, offset, send } = useWorldSocket(session ? { t: 'hello', sessionToken: session.sessionToken } : null, onMessage);
   const live = useLiveClock(clock, offset);
 
@@ -96,10 +99,10 @@ export function Lobby() {
   }
 
   const inWorld = clock && ['COUNTDOWN', 'LIVE', 'PAUSED', 'FINISHED'].includes(clock.status);
-  if (inWorld && me?.role === 'RACER' && world) {
+  if (inWorld && me?.role === 'RACER' && world && worldMap) {
     return (
       <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the world…</p></main>}>
-        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} />
+        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} map={worldMap} />
       </Suspense>
     );
   }
@@ -137,6 +140,7 @@ export function Lobby() {
             {roster.full ? 'Squad complete — 4/4 ready' : `${roster.players.length}/4 players`}
           </div>
           {isCaptain && preStart && roster.players.length > 1 && <RoleEditor roster={roster} token={session.sessionToken} onSaved={setRoster} />}
+          <StartPicker token={session.sessionToken} current={roster.startLocation} canEdit={!!isCaptain && preStart} />
         </div>
         <div className="card center">
           <ClockPanel clock={live} />
@@ -167,6 +171,9 @@ export function Lobby() {
 
         </div>
       </section>
+      <footer className="footer-credits">
+        <a href="/credits">Credits &amp; map data: © OpenStreetMap contributors (ODbL)</a>
+      </footer>
       {inWorld && squad && session && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} />}
     </main>
   );

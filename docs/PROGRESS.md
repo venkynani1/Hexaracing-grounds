@@ -2,6 +2,32 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-20 — Milestone 5: Chennai geography
+
+### What runs
+- **OSM pipeline** (`tools/mapbuild`): Tamil Nadu PBF (download.openstreetmap.fr, snapshot 2026-11-17, md5-verified) → pyosmium extract (8,102 major-road ways, 441 signals, reference features) → TS builder → `packages/shared/src/map/chennai.map.json` (903 KB; 22,462 nodes, 25,220 edges). Licensed ODbL 1.0 with attribution (`CHENNAI_DATA_LICENSE.md`). Overpass and Geofabrik were refused from this cloud environment (remote side / egress), so the reproducible PBF route is used.
+- **Destination**: OSM node `n6572344272` "Hexaware Technologies" (office=it, SIPCOT IT Park Siruseri); the gate is the nearest drivable public-road node (campus roads aren't in the graph) — disclosed in the map data.
+- **Verified start locations** (all 7): Chennai Central (station node), Guindy, Velachery, Thiruvanmiyur (place=suburb), Tambaram (place=city), Kelambakkam, Mahabalipuram (place=town) — each matched to an exact OSM element, within 60 km, snapped to the road graph, routed to Hexaware, with a 6-slot staggered spawn grid. Stored in `start_locations` with lat/lon, world x/z, `enabled`, `verified_at`.
+- **Scale**: uniform **0.849** chosen by calibration (DESIGN §3 updated — the old 1:8 guess gave a 3-minute drive).
+- **Route normalisation**: target 30 min reference-car time. Longest natural route (Chennai Central) sets the scale; shorter routes are extended through disclosed landmarks / named junctions. Result: 29.4–30.8 min for all 7 courses. 10 checkpoints per course at equal fractions of reference time, detected in order on the server, persisted idempotently to `vehicle_checkpoints`.
+- **Shared road model generalised**: per-edge lanes/width/one-way, junction stop lines, signal groups for skewed junctions, spatial index, oriented-box collisions, procedural roadside buildings per cell (identical on server and client), traffic on course corridors (400 agents, weighted toward major roads).
+- **Client**: cell-streamed 3D Chennai (roads, junctions, lane markings, signals, buildings), full-map minimap with course + checkpoints, checkpoint guidance pill, Captain's start-location picker with capacity and disclosed course, OSM attribution in the racer HUD and host map, `/credits` page.
+
+### Tested
+- `npm test`: 93 tests. New `chennai.test.ts`: OSM-derived graph + attribution; every start reaches Hexaware and back (one-way rules); every course is a contiguous legal drive; starts verified (OSM ids, < 60 km, spawn on road, slots apart); DB `verified_at` + coordinates; disabled/full/post-START selections rejected; auto-assignment; cars spawn on their grid; **reference times re-simulated with the shared vehicle model all within ±10%** (29.4–30.8 min); equal-time checkpoints; in-order checkpoint detection + persistence; Chennai tick p99 **4.3 ms** with 30 cars + 400 traffic (budget 10 ms).
+- `npm run test:e2e`: 5 tests (on the Chennai map). New M5: Captain picks Kelambakkam, all phones show the course; racer HUD shows checkpoint guidance and "© OpenStreetMap contributors (ODbL)"; `/credits` shows ODbL + 85% scale; host map shows attribution.
+
+### Known limitations / open risks
+- Reference time is an idealised driver (no traffic/signals). Real squads will be slower; the 30-min target assumes ~1.3–1.5× → ~40–45 min. Needs a playtest to tune `BALANCE.courseTargetS`.
+- Some course vias are generic junction labels ("junction of East Coast Road"); fine for disclosure, could be nicer landmark names.
+- Graph includes tertiary roads: 0.9 MB map + 1.1 MB Babylon chunk for racers (~1.4 MB gz). Fine vs the 15 MB budget but worth trimming.
+- Bridges/flyovers are flat (OSM `bridge` tag is captured but not yet rendered as elevation).
+- Ground is a flat plane; no water/coastline rendering yet.
+- `vehicle_checkpoints` are recorded but not yet scored (Driving points come with M7).
+
+### Next (M6)
+- Shared service stations + 6-step pit flow with four roles, FIFO queues, fuel exhaustion recovery, Redline Director beats with seeded bounded road closures (always leaving a valid route), shared weather (Monsoon Protocol rain).
+
 ## 2026-11-19 — Milestone 4: Four-player squad mechanics
 
 ### What runs

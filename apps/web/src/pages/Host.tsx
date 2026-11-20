@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { ROLE_LABEL, createTestNetwork, type HostOverview, type MapMessage, type ServerMessage } from '@redline/shared';
+import { ROLE_LABEL, type HostOverview, type MapMessage, type ServerMessage, type WorldMap } from '@redline/shared';
 import { drawMap } from '../game/minimap';
+import { useWorldMap } from '../game/useWorldMap';
 import { api, HttpError } from '../lib/api';
 import { useWorldSocket } from '../lib/socket';
 import { Brand, ClockPanel, Qr, useLiveClock } from '../components';
@@ -14,6 +15,9 @@ export function Host() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [map, setMap] = useState<MapMessage | null>(null);
+  const [mapId, setMapId] = useState<'test' | 'chennai' | undefined>();
+  useEffect(() => void api.event().then((e) => setMapId(e.map), () => {}), []);
+  const worldMap = useWorldMap(mapId);
 
   const onMessage = useCallback((m: ServerMessage) => {
     if (m.t === 'welcome' && m.kind === 'host') setOv(m.overview);
@@ -127,7 +131,7 @@ export function Host() {
             <Qr value={registrationUrl} size={200} label="Scan to register" />
             <p className="hint">{registrationUrl}</p>
           </div>
-          {map && <LiveMap map={map} />}
+          {map && worldMap && <LiveMap map={map} world={worldMap} />}
           <div className="card squads">
             <h2>Squads</h2>
             {ov.squads.length === 0 && <p className="muted">No squads yet.</p>}
@@ -136,6 +140,7 @@ export function Host() {
                 <tr>
                   <th>Squad</th>
                   <th>Code</th>
+                  <th>Start</th>
                   <th>Roster</th>
                   <th>Ready</th>
                 </tr>
@@ -145,6 +150,7 @@ export function Host() {
                   <tr key={s.teamId} data-testid="squad-row">
                     <td>{s.name}</td>
                     <td className="mono">{s.joinCode}</td>
+                    <td>{s.startLocation ?? '— (auto)'}</td>
                     <td>
                       {s.players.map((p) => (
                         <span key={p.playerId} className="mini-player" title={ROLE_LABEL[p.role]}>
@@ -166,9 +172,9 @@ export function Host() {
 }
 
 /** Live map of the ONE world: actual server positions of every squad car (no fabricated positions). */
-function LiveMap({ map }: { map: MapMessage }) {
+function LiveMap({ map, world }: { map: MapMessage; world: WorldMap }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const net = useMemo(() => createTestNetwork(), []);
+  const net = useMemo(() => world.net, [world]);
   useEffect(() => {
     const c = ref.current;
     const ctx = c?.getContext('2d');
@@ -177,13 +183,16 @@ function LiveMap({ map }: { map: MapMessage }) {
       ctx,
       net,
       map.cars.map(([cid, , name, x, z, heading]) => ({ id: cid, x, z, heading, label: name })),
-      { labels: true, dpr: 2 },
+      { labels: true, dpr: 2, target: { x: world.net.nodes[world.destination.node]!.x, z: world.net.nodes[world.destination.node]!.z } },
     );
-  }, [map, net]);
+  }, [map, net, world]);
   return (
     <div className="card center map-card">
       <div className="eyebrow">Live world · {map.cars.length} squad cars · tick {map.tick}</div>
       <canvas ref={ref} className="host-map" width={1200} height={1200} data-testid="host-map" />
+      <div className="hint" data-testid="host-map-attribution">
+        {world.id === 'chennai' ? `Map data ${world.attribution} · Chennai at ${Math.round(world.scale * 100)}% scale · ◯ Hexaware Gate` : 'Synthetic test map'}
+      </div>
     </div>
   );
 }

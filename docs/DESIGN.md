@@ -68,7 +68,7 @@ Top risks: (1) mobile GPU performance and thermal throttling, (2) venue Wi-Fi ca
 
 **Coordinate system.** Local tangent plane (ENU) anchored at the Hexaware Siruseri campus gate (exact lat/lon to be verified and stored in `world_metadata`). `x` = east metres, `z` = north metres, `y` = up. All server and client positions use this frame. Conversion lat/lon → ENU happens only in `tools/mapbuild`.
 
-**Game-scale factor.** World geometry is built from real centrelines, then **uniformly scaled by `WORLD_SCALE` (initially 1:8)** so cross-city drives fit the timeline. The same factor applies everywhere, so relative geography is preserved and convergence is real (two squads on OMR are on the same OMR). The scale is disclosed in the intro screen ("Chennai, compressed 8×"). Landmarks are placed at their scaled positions; local road widths/building sizes are kept at real size.
+**Game-scale factor.** *(Revised in M5, measured.)* World geometry is built from real OSM centrelines and **uniformly scaled by `map.scale`**, chosen by `tools/mapbuild` so the longest natural route (Chennai Central → Hexaware) takes the 30-minute reference-car target. Result: **0.849** (Chennai at 85% scale). The original 1:8 guess would have made the longest drive ≈ 4 km / 3 min — far too short for the 47-minute driving window. The same factor applies everywhere, so relative geography is preserved and convergence is real. The scale is disclosed in-game and on /credits.
 
 **Road graph.** Built offline by `tools/mapbuild` from OSM extracts of selected corridors:
 - `nodes`: junctions with id, position, signal flag.
