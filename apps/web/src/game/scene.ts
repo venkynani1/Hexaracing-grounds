@@ -37,6 +37,7 @@ import {
   signalState,
   stationExclusions,
   gateLayout,
+  nearestEdge,
   type Closure,
   type RoadNetwork,
   type SignalColor,
@@ -176,6 +177,7 @@ export class GameScene {
     this.buildStations(map);
     this.buildGate(map);
     this.applyQuality();
+    this.inst = new SceneInstrumentation(scene);
     this.ready = this.loadAssets();
   }
 
@@ -183,19 +185,24 @@ export class GameScene {
 
   private async loadAssets() {
     const scene = this.scene;
-    const [hero, lod1, lod2, barrier] = await Promise.all([
-      loadContainer(scene, 'cars/car_hero.glb'),
+    // Low preset: your own car uses the 20k-triangle LOD instead of the ~105k hero (and skips its 3 MB download).
+    const lowEnd = this.quality === 'low';
+    const [hero, lod1, lod2, lod3, barrier] = await Promise.all([
+      lowEnd ? Promise.resolve(null) : loadContainer(scene, 'cars/car_hero.glb'),
       loadContainer(scene, 'cars/car_lod1.glb'),
       loadContainer(scene, 'cars/car_lod2.glb'),
+      loadContainer(scene, 'cars/car_lod3.glb'),
       loadContainer(scene, 'props/barrier.glb'),
     ]);
     if (scene.isDisposed) return;
     const t1 = lod1 ? buildCarTemplate(lod1, scene, 'lod1') : null;
     const t2 = lod2 ? buildCarTemplate(lod2, scene, 'lod2') : null;
-    this.heroTpl = hero ? buildCarTemplate(hero, scene, 'hero') : t1;
+    const t3 = lod3 ? buildCarTemplate(lod3, scene, 'lod3') : null;
+    // The hero must not share instance sources with the fleet; a separate LOD1 copy is loaded for low.
+    this.heroTpl = hero ? buildCarTemplate(hero, scene, 'hero') : lowEnd ? await loadContainer(scene, 'cars/car_lod1.glb').then((c) => (c ? buildCarTemplate(c, scene, 'hero-low') : null)) : t1;
     this.fleet.dispose();
     this.fleet = new CarFleet(scene, t1, t2);
-    this.traffic = new TrafficRenderer(scene, t2);
+    this.traffic = new TrafficRenderer(scene, t3 ?? t2);
     if (barrier) {
       barrier.addAllToScene();
       const ms = barrier.meshes.filter((m): m is Mesh => m instanceof Mesh && m.getTotalVertices() > 0);
@@ -349,23 +356,28 @@ export class GameScene {
     signMat.diffuseTexture = sign;
     signMat.emissiveColor = new Color3(0.5, 0.5, 0.5);
     for (const st of map.stations) {
+      // Fit forecourt + canopy to the space beside the road (never overhang a carriageway).
+      const half = Math.max(3, Math.min(8, nearestEdge(map.net, st.x, st.z).clearance - 0.4));
+      const canW = Math.min(12, half * 2);
+      const padW = Math.min(16, half * 2);
+      const pillarX = Math.max(1.5, canW / 2 - 1.5);
       const ch = Math.cos(st.heading);
       const sh = Math.sin(st.heading);
       const at = (dx: number, dz: number, y: number) => new Vector3(st.x + dx * ch + dz * sh, y, st.z - dx * sh + dz * ch);
-      const pad = MeshBuilder.CreateBox(`st-pad-${st.id}`, { width: 16, depth: 34, height: 0.14 }, scene);
+      const pad = MeshBuilder.CreateBox(`st-pad-${st.id}`, { width: padW, depth: 34, height: 0.14 }, scene);
       pad.position.set(st.x, 0.02, st.z);
       pad.rotation.y = st.heading;
       pad.material = this.mats.concrete;
       pad.receiveShadows = true;
-      const top = MeshBuilder.CreateBox(`st-can-${st.id}`, { width: 12, depth: 26, height: 0.5 }, scene);
+      const top = MeshBuilder.CreateBox(`st-can-${st.id}`, { width: canW, depth: 26, height: 0.5 }, scene);
       top.position.set(st.x, 5.6, st.z);
       top.rotation.y = st.heading;
       top.material = canopy;
-      const band = MeshBuilder.CreateBox(`st-band-${st.id}`, { width: 12.2, depth: 26.2, height: 0.7 }, scene);
+      const band = MeshBuilder.CreateBox(`st-band-${st.id}`, { width: canW + 0.2, depth: 26.2, height: 0.7 }, scene);
       band.position.set(st.x, 5.15, st.z);
       band.rotation.y = st.heading;
       band.material = fascia;
-      for (const [dx, dz] of [[-4, -9], [4, -9], [-4, 9], [4, 9]] as const) {
+      for (const [dx, dz] of [[-pillarX, -9], [pillarX, -9], [-pillarX, 9], [pillarX, 9]] as const) {
         const pl = MeshBuilder.CreateCylinder(`st-pl-${st.id}`, { height: 5, diameter: 0.35, tessellation: 10 }, scene);
         pl.position.copyFrom(at(dx, dz, 2.5));
         pl.material = pumpMat;
@@ -381,7 +393,7 @@ export class GameScene {
         pump.material = pumpMat;
       }
       const pylon = MeshBuilder.CreatePlane(`st-pylon-${st.id}`, { width: 1.8, height: 3.6, sideOrientation: Mesh.DOUBLESIDE }, scene);
-      pylon.position.copyFrom(at(-9.5, -15, 3.2));
+      pylon.position.copyFrom(at(-(padW / 2 - 0.6), -15, 3.2));
       pylon.rotation.y = st.heading + Math.PI / 2;
       pylon.material = signMat;
       for (const b of st.bays) {
@@ -552,7 +564,10 @@ export class GameScene {
   }
 
   updateTraffic(items: { id: number; type: number; x: number; z: number; heading: number }[]) {
-    this.traffic.update(items);
+    // Draw-distance cull (visual only): far traffic is fogged out anyway.
+    const c = this.camera.position;
+    const r2 = (PRESETS[this.quality].draw * 0.45) ** 2;
+    this.traffic.update(items.filter((t) => (t.x - c.x) ** 2 + (t.z - c.z) ** 2 < r2));
   }
 
   updateSignals(simMs: number) {
@@ -630,16 +645,22 @@ export class GameScene {
       look = new Vector3(p.x + fx * 8, 0, p.z + fz * 8);
       this.camPos = Vector3.Lerp(this.camPos, target, 1 - Math.exp(-dt * 6));
     } else {
-      const back = 6.2 + Math.min(2.6, speed * 0.05);
-      const target = new Vector3(p.x - fx * back, 2.05 + Math.min(0.7, speed * 0.012), p.z - fz * back);
-      look = new Vector3(p.x + fx * 7, 0.95, p.z + fz * 7);
+      const tall = this.engine.getAspectRatio(this.camera) < 1;
+      const back = (tall ? 5.4 : 6.2) + Math.min(2.6, speed * 0.05);
+      const target = new Vector3(p.x - fx * back, (tall ? 2.9 : 2.05) + Math.min(0.7, speed * 0.012), p.z - fz * back);
+      // Portrait: aim lower so the road (not the sky) fills the tall screen.
+      look = tall ? new Vector3(p.x + fx * 9, -1.2, p.z + fz * 9) : new Vector3(p.x + fx * 7, 0.95, p.z + fz * 7);
       this.camPos = Vector3.Lerp(this.camPos, target, 1 - Math.exp(-dt * 9));
       // tiny high-speed shake (visual only)
       if (speed > 30) this.camPos.y += Math.sin(performance.now() * 0.05) * 0.008 * (speed - 30) * 0.1;
     }
     this.camera.position.copyFrom(this.camPos);
     this.camera.setTarget(look);
-    const fovTarget = this.camMode === 'chase' ? 0.9 + Math.min(0.22, speed * 0.004) + (p.nitro ? 0.1 : 0) : 1.0;
+    // Portrait phones: fix the HORIZONTAL field of view so the road isn't cropped to a slit.
+    const portrait = this.engine.getAspectRatio(this.camera) < 1;
+    this.camera.fovMode = portrait ? UniversalCamera.FOVMODE_HORIZONTAL_FIXED : UniversalCamera.FOVMODE_VERTICAL_FIXED;
+    const base = portrait ? 1.12 : 0.9;
+    const fovTarget = this.camMode === 'chase' ? base + Math.min(0.22, speed * 0.004) + (p.nitro ? 0.1 : 0) : portrait ? 1.35 : 1.0;
     this.camera.fov += (fovTarget - this.camera.fov) * (1 - Math.exp(-dt * 4));
   }
 
@@ -667,10 +688,10 @@ export class GameScene {
   }
 
   /** Render statistics for the perf overlay / measurements. */
-  private inst: SceneInstrumentation | null = null;
+  private inst: SceneInstrumentation;
+  /** Per-frame render statistics (draw calls are the last-second average per frame). */
   stats() {
     const s = this.scene;
-    this.inst ??= new SceneInstrumentation(s);
     return {
       drawCalls: this.inst.drawCallsCounter.current,
       activeMeshes: s.getActiveMeshes().length,

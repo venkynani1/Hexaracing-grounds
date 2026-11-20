@@ -188,11 +188,15 @@ export function createSky(scene: Scene, lowEnd: boolean): { dome: Mesh; env: HDR
   } catch (e) {
     console.warn('[sky] HDR environment unavailable', e);
   }
-  const dome = MeshBuilder.CreateSphere('sky', { diameter: 5000, segments: 24, sideOrientation: Mesh.BACKSIDE }, scene);
+  // UV-mapped dome: sphere UVs are equirectangular (v = 0 at the bottom pole), so the photo's horizon sits
+  // exactly at eye level for every heading. Lower hemisphere is hidden by the ground plane + haze.
+  const dome = MeshBuilder.CreateSphere('sky', { diameter: 5000, segments: 32, sideOrientation: Mesh.BACKSIDE }, scene);
   const mat = new StandardMaterial('sky-mat', scene);
-  const tex = new Texture(`${ASSET_BASE}/env/sky.webp`, scene, true, false);
-  tex.coordinatesMode = Texture.FIXED_EQUIRECTANGULAR_MODE;
-  mat.reflectionTexture = tex;
+  const tex = new Texture(`${ASSET_BASE}/env/sky.webp`, scene, true, true);
+  tex.uScale = -1;
+  tex.wrapU = Texture.WRAP_ADDRESSMODE;
+  tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+  mat.emissiveTexture = tex;
   mat.disableLighting = true;
   mat.diffuseColor = Color3.Black();
   mat.specularColor = Color3.Black();
@@ -201,7 +205,6 @@ export function createSky(scene: Scene, lowEnd: boolean): { dome: Mesh; env: HDR
   dome.material = mat;
   dome.infiniteDistance = true;
   dome.isPickable = false;
-  dome.renderingGroupId = 0;
   dome.applyFog = false;
   mat.disableDepthWrite = true;
   void Constants;

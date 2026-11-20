@@ -237,7 +237,7 @@ function CodingQuestion({ q, index, total, token, onDone }: { q: CodingQ; index:
         <span className="eyebrow">
           Question {index + 1} of {total}
         </span>
-        <span className="eng-attempts">{q.solved ? `✓ +${q.points}` : `${Math.max(0, q.maxAttempts - q.attempts)} attempt(s) · ${q.points} pts`}</span>
+        <span className="eng-attempts">{q.solved ? `✓ +${q.points}` : `${Math.max(0, q.maxAttempts - q.attempts)} attempt(s) left`}</span>
       </div>
       <div className="q-prompt eng-prompt">{q.prompt}</div>
       <Code code={q.code} />

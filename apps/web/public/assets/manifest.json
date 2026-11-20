@@ -13,8 +13,12 @@
       "kb": 103
     },
     {
+      "path": "cars/car_lod3.glb",
+      "kb": 62
+    },
+    {
       "path": "env/sky.webp",
-      "kb": 58
+      "kb": 56
     },
     {
       "path": "env/sky_1k.hdr",
@@ -69,7 +73,7 @@
       "kb": 27
     }
   ],
-  "totalKB": 5696,
+  "totalKB": 5756,
   "meshes": {
     "cars/car_hero.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",
@@ -85,6 +89,11 @@
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_lod2.glb",
       "trisBefore": 129632,
       "tris": 3927
+    },
+    "cars/car_lod3.glb": {
+      "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_lod3.glb",
+      "trisBefore": 129632,
+      "tris": 1203
     },
     "props/barrier.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/props/barrier.glb",

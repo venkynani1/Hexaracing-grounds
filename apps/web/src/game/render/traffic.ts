@@ -9,7 +9,6 @@
  */
 import {
   Color3,
-  Color4,
   DynamicTexture,
   Matrix,
   Mesh,
@@ -47,8 +46,6 @@ function mergeParts(name: string, parts: Part[], scene: Scene, mat: PBRMaterial)
   m.name = name;
   m.material = mat;
   m.useVertexColors = true;
-  m.registerInstancedBuffer('color', 4);
-  m.instancedBuffers.color = new Color4(1, 1, 1, 1);
   m.isPickable = false;
   m.setEnabled(false);
   void scene;
@@ -68,7 +65,7 @@ const wheel = (scene: Scene, r: number, w: number, x: number, z: number) => {
 };
 
 /** The far-LOD licensed car merged into one vertex-coloured mesh (paint white → instance colour). */
-function mergedCar(tpl: CarTemplate, scene: Scene, mat: PBRMaterial): Mesh {
+function mergedCar(tpl: CarTemplate, scene: Scene, mat: PBRMaterial, paintCol: [number, number, number]): Mesh {
   const parts: Part[] = [];
   const add = (src: Mesh, offset?: Vector3) => {
     const c = src.clone('c', null, true, false)!;
@@ -80,7 +77,7 @@ function mergedCar(tpl: CarTemplate, scene: Scene, mat: PBRMaterial): Mesh {
     const isPaint = !!pm && /^Paint/.test(pm.name);
     const isGlass = !!pm && /Glass/.test(pm.name);
     const isLight = !!pm && /light/i.test(pm.name);
-    const col: [number, number, number] = isPaint ? (/Paint 2/.test(pm!.name) ? [0.25, 0.25, 0.25] : [1, 1, 1]) : isGlass ? [0.03, 0.04, 0.05] : isLight ? [0.9, 0.85, 0.75] : [Math.min(1, a.r * 2), Math.min(1, a.g * 2), Math.min(1, a.b * 2)];
+    const col: [number, number, number] = isPaint ? (/Paint 2/.test(pm!.name) ? [paintCol[0] * 0.25, paintCol[1] * 0.25, paintCol[2] * 0.25] : paintCol) : isGlass ? [0.03, 0.04, 0.05] : isLight ? [0.9, 0.85, 0.75] : [Math.min(1, a.r * 2), Math.min(1, a.g * 2), Math.min(1, a.b * 2)];
     for (const k of [VertexBuffer.UV2Kind, VertexBuffer.TangentKind]) if (c.isVerticesDataPresent(k)) c.removeVerticesData(k);
     parts.push({ mesh: c, color: col });
   };
@@ -135,12 +132,12 @@ function proceduralTruck(scene: Scene, mat: PBRMaterial): Mesh {
   return mergeParts('traffic-truck', p, scene, mat);
 }
 
-function proceduralBike(scene: Scene, mat: PBRMaterial): Mesh {
+function proceduralBike(scene: Scene, mat: PBRMaterial, bodyCol: [number, number, number]): Mesh {
   const { length: L } = TRAFFIC_TYPES.motorcycle;
   const p: Part[] = [
     { mesh: wheel(scene, 0.32, 0.1, 0, L / 2 - 0.35), color: [0.03, 0.03, 0.03] },
     { mesh: wheel(scene, 0.32, 0.12, 0, -L / 2 + 0.35), color: [0.03, 0.03, 0.03] },
-    { mesh: box(scene, 0.32, 0.35, 1.0, 0, 0.62, 0), color: [0.75, 0.75, 0.78] }, // tank/body
+    { mesh: box(scene, 0.32, 0.35, 1.0, 0, 0.62, 0), color: bodyCol }, // tank/body
     { mesh: box(scene, 0.3, 0.12, 0.7, 0, 0.86, -0.35), color: [0.05, 0.05, 0.05] }, // seat
     { mesh: box(scene, 0.6, 0.05, 0.05, 0, 1.05, 0.55), color: [0.1, 0.1, 0.1] }, // handlebar
     { mesh: box(scene, 0.4, 0.62, 0.3, 0, 1.25, -0.25), color: [0.2, 0.3, 0.55] }, // rider torso
@@ -168,7 +165,8 @@ const BIKE_COLOURS: [number, number, number][] = [
 ];
 
 export class TrafficRenderer {
-  private readonly templates: Mesh[];
+  /** Per traffic type, a few colour variants (vertex colours baked — one draw call per variant). */
+  private readonly variants: Mesh[][];
   private readonly pool = new Map<number, InstancedMesh>();
   constructor(
     private readonly scene: Scene,
@@ -179,10 +177,13 @@ export class TrafficRenderer {
     mat.roughness = 0.42;
     mat.metallic = 0.25;
     const busMat = busLivery(scene);
-    const car = carTpl
-      ? mergedCar(carTpl, scene, mat)
-      : mergeParts('traffic-car', [{ mesh: box(scene, TRAFFIC_TYPES.car.width, 1.4, TRAFFIC_TYPES.car.length, 0, 0.75, 0), color: [1, 1, 1] }], scene, mat);
-    this.templates = [car, proceduralBike(scene, mat), proceduralBus(scene, busMat), proceduralTruck(scene, mat)];
+    const lin = (c: [number, number, number]): [number, number, number] => [c[0] ** 2.2, c[1] ** 2.2, c[2] ** 2.2];
+    const cars = CAR_COLOURS.map((c) =>
+      carTpl
+        ? mergedCar(carTpl, scene, mat, lin(c))
+        : mergeParts('traffic-car', [{ mesh: box(scene, TRAFFIC_TYPES.car.width, 1.4, TRAFFIC_TYPES.car.length, 0, 0.75, 0), color: lin(c) }], scene, mat),
+    );
+    this.variants = [cars, BIKE_COLOURS.map((c) => proceduralBike(scene, mat, lin(c))), [proceduralBus(scene, busMat)], [proceduralTruck(scene, mat)]];
   }
 
   update(items: { id: number; type: number; x: number; z: number; heading: number }[]) {
@@ -191,12 +192,9 @@ export class TrafficRenderer {
       seen.add(t.id);
       let inst = this.pool.get(t.id);
       if (!inst) {
-        const tpl = this.templates[t.type] ?? this.templates[0]!;
-        inst = tpl.createInstance(`tr${t.id}`);
+        const vs = this.variants[t.type] ?? this.variants[0]!;
+        inst = vs[t.id % vs.length]!.createInstance(`tr${t.id}`);
         inst.isPickable = false;
-        const pal = t.type === 0 ? CAR_COLOURS : t.type === 1 ? BIKE_COLOURS : [[1, 1, 1] as [number, number, number]];
-        const c = pal[t.id % pal.length]!;
-        inst.instancedBuffers.color = new Color4(c[0], c[1], c[2], 1);
         this.pool.set(t.id, inst);
       }
       inst.position.set(t.x, 0, t.z);
@@ -207,7 +205,7 @@ export class TrafficRenderer {
   }
 
   get templateMeshes() {
-    return this.templates;
+    return this.variants.flat();
   }
 }
 

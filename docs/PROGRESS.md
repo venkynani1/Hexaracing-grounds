@@ -215,3 +215,9 @@ Update this at the end of every session: what runs, what's tested, what's next, 
 - Approved Hexaware branding assets for the offer letters and gate.
 - Licensed live-traffic API, or use scripted density only.
 - Exact event date and venue Wi-Fi capacity.
+
+## Session: visual rebuild (critical directive)
+- Built: licensed-asset pipeline (`tools/assets`, docs/ASSETS.md), GLB car (hero + 3 LODs, logos removed), PBR roads/markings/kerbs/footpaths/medians/zebras, textured buildings, LED street lights, palms, signals, fuel stations, coloured traffic models, HDR IBL + following sun shadows + ACES + haze, rain/wet roads, tyre smoke, nitro, new chase camera, redesigned racer HUD, one-question Engineer console, GPU-based default preset, `/test-drive` offline checkpoint with on-device benchmark.
+- Tested: 110 unit/integration + 4 perf + 7 e2e pass; typecheck; build.
+- Measured (SwiftShader software GPU only): low 30 FPS / 87 draws / 45k tris; medium 11 FPS / 209 / 268k; high 10 FPS / 250 / 284k. See docs/VISUALS.md.
+- NOT done: real mid-range Android measurement (no device here — run `/test-drive?bench=60` on the phone), auto-rickshaws (needs a shared-sim traffic type), real landmark buildings, night lighting, puddles/splashes. Full list in docs/VISUALS.md.

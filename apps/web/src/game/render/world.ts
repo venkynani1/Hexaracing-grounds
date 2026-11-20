@@ -207,14 +207,24 @@ export class WorldBuilder {
     trunk.setEnabled(false);
     const top = path[path.length - 1]!;
     const fronds: Mesh[] = [];
-    for (let i = 0; i < 9; i++) {
-      const f = MeshBuilder.CreatePlane('frond', { width: 4.2, height: 1.1, sideOrientation: Mesh.DOUBLESIDE }, scene);
-      f.bakeTransformIntoVertices(Matrix.Translation(2.1, 0, 0));
-      const yaw = (i / 9) * Math.PI * 2;
-      f.rotationQuaternion = Quaternion.RotationYawPitchRoll(yaw, Math.PI / 2, 0).multiply(Quaternion.RotationAxis(Vector3.Forward(), -0.35 - (i % 3) * 0.12));
-      f.position.copyFrom(top);
-      f.bakeCurrentTransformIntoVertices();
-      fronds.push(f);
+    // Drooping, tapered fronds (ribbons) radiating from the crown.
+    for (let i = 0; i < 11; i++) {
+      const yaw = (i / 11) * Math.PI * 2 + (i % 2) * 0.2;
+      const dx = Math.sin(yaw);
+      const dz = Math.cos(yaw);
+      const len = 3.6 + (i % 3) * 0.5;
+      const rise = 0.9 - (i % 4) * 0.25;
+      const left: Vector3[] = [];
+      const right: Vector3[] = [];
+      for (let k = 0; k <= 8; k++) {
+        const t = k / 8;
+        const w = 0.55 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.05;
+        const c = new Vector3(top.x + dx * len * t, top.y + rise * t - 2.6 * t * t, top.z + dz * len * t);
+        // leaflets angle down from the rib (V-shape)
+        left.push(c.add(new Vector3(-dz * w, -0.25 * w, dx * w)));
+        right.push(c.add(new Vector3(dz * w, -0.25 * w, -dx * w)));
+      }
+      fronds.push(MeshBuilder.CreateRibbon('frond', { pathArray: [left, right], sideOrientation: Mesh.DOUBLESIDE }, scene));
     }
     const crown = Mesh.MergeMeshes(fronds, true, true)!;
     crown.material = this.mats.palmLeaf;
@@ -402,13 +412,14 @@ export class WorldBuilder {
         }
       }
       if (e.cls >= 1 && e.cls <= 4 && seg > 4) {
-        for (let s = rng.next() * 16 + 2; s < seg - 2; s += 16) {
-          if (rng.next() > 0.55) continue;
+        for (let s = rng.next() * 30 + 4; s < seg - 4; s += 26 + rng.next() * 14) {
+          if (rng.next() > 0.32) continue;
           for (const side of medianSide ? [1] : [1, -1]) {
             if (rng.next() > 0.6) continue;
-            const off = side * (hw + 2.7);
-            const sc = 0.85 + rng.next() * 0.35;
-            if (!this.clearOf(ax + fx * s - fz * off, az + fz * s + fx * off, id, 0.4)) continue;
+            const off = side * (hw + 5.5);
+            const sc = 0.7 + rng.next() * 0.5;
+            // crown (~4 m radius) must not overhang any carriageway, including this one
+            if (!this.clearOf(ax + fx * s - fz * off, az + fz * s + fx * off, -1, 4.2)) continue;
             Matrix.Compose(new Vector3(sc, sc, sc), Quaternion.RotationYawPitchRoll(rng.next() * Math.PI * 2, 0, 0), new Vector3(ax + fx * s - fz * off, Y.path, az + fz * s + fx * off))
               .asArray()
               .forEach((v) => palmM.push(v));

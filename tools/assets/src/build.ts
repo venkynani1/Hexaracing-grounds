@@ -40,7 +40,7 @@ async function plateTexture(): Promise<Uint8Array> {
   return new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer());
 }
 
-async function buildCar(lod: 'hero' | 'lod1' | 'lod2') {
+async function buildCar(lod: 'hero' | 'lod1' | 'lod2' | 'lod3') {
   const doc = await io.read(join(CACHE, 'car-concept', 'CarConcept.glb'));
   const root = doc.getRoot();
   // 1. Trademarks out (licence excludes logos).
@@ -86,7 +86,7 @@ async function buildCar(lod: 'hero' | 'lod1' | 'lod2') {
   const before = triCount(doc);
   await doc.transform(
     weld({}),
-    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.5 : lod === 'lod1' ? 0.12 : 0.025, error: lod === 'hero' ? 0.0008 : lod === 'lod1' ? 0.004 : 0.03 }),
+    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.5 : lod === 'lod1' ? 0.12 : lod === 'lod2' ? 0.025 : 0.006, error: lod === 'hero' ? 0.0008 : lod === 'lod1' ? 0.004 : lod === 'lod2' ? 0.03 : 0.08 }),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: lod === 'hero' ? [1024, 1024] : lod === 'lod1' ? [256, 256] : [64, 64], quality: 82 }),
     quantize(),
@@ -138,15 +138,61 @@ async function buildTextures() {
     execFileSync('unzip', ['-oq', join(CACHE, id, `${id}_1K-JPG.zip`), '-d', dir]);
     await tex(join(dir, `${id}_1K-JPG_Color.jpg`), `${id.toLowerCase()}_diff.webp`, 1024, 82);
   }
-  // Sky: equirect dome image (visible sky) + the 1k HDR for IBL.
-  await sharp(join(CACHE, 'kloofendal_48d_partly_cloudy_puresky', 'sky_tonemapped.jpg')).resize(2048, 1024).webp({ quality: 82 }).toFile(join(OUT, 'env', 'sky.webp'));
+  // Sky: tonemap the 2k pure-sky HDR (no terrain) into the visible dome + the 1k HDR for IBL.
+  const hdr = decodeHdr(readFileSync(join(CACHE, 'kloofendal_48d_partly_cloudy_puresky', 'sky_2k.hdr')));
+  const rgb = Buffer.alloc(hdr.w * hdr.h * 3);
+  const aces = (x: number) => Math.min(1, Math.max(0, (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)));
+  for (let i = 0; i < hdr.w * hdr.h; i++)
+    for (let c = 0; c < 3; c++) rgb[i * 3 + c] = Math.round(255 * Math.pow(aces(hdr.data[i * 3 + c]! * 0.9), 1 / 2.2));
+  await sharp(rgb, { raw: { width: hdr.w, height: hdr.h, channels: 3 } }).resize(2048, 1024).webp({ quality: 84 }).toFile(join(OUT, 'env', 'sky.webp'));
   copyFileSync(join(CACHE, 'kloofendal_48d_partly_cloudy_puresky', 'sky_1k.hdr'), join(OUT, 'env', 'sky_1k.hdr'));
+}
+
+/** Minimal Radiance RGBE (.hdr) decoder (new-style RLE scanlines). */
+function decodeHdr(buf: Buffer): { w: number; h: number; data: Float32Array } {
+  let p = 0;
+  const line = () => {
+    const s = p;
+    while (buf[p] !== 0x0a) p++;
+    return buf.toString('latin1', s, p++);
+  };
+  let l = line();
+  if (!l.startsWith('#?')) throw new Error('not an HDR file');
+  while ((l = line()) !== '') if (l.startsWith('FORMAT') && !l.includes('32-bit_rle_rgbe')) throw new Error('unsupported HDR format');
+  const m = /-Y (\d+) \+X (\d+)/.exec(line());
+  if (!m) throw new Error('unsupported HDR orientation');
+  const h = Number(m[1]);
+  const w = Number(m[2]);
+  const data = new Float32Array(w * h * 3);
+  const scan = new Uint8Array(w * 4);
+  for (let y = 0; y < h; y++) {
+    if (buf[p] !== 2 || buf[p + 1] !== 2) throw new Error('flat HDR scanlines not supported');
+    p += 4;
+    for (let c = 0; c < 4; c++)
+      for (let x = 0; x < w; ) {
+        let n = buf[p++]!;
+        if (n > 128) {
+          n -= 128;
+          const v = buf[p++]!;
+          while (n--) scan[x++ * 4 + c] = v;
+        } else while (n--) scan[x++ * 4 + c] = buf[p++]!;
+      }
+    for (let x = 0; x < w; x++) {
+      const e = scan[x * 4 + 3]!;
+      const f = e ? Math.pow(2, e - 136) : 0;
+      const o = (y * w + x) * 3;
+      data[o] = scan[x * 4]! * f;
+      data[o + 1] = scan[x * 4 + 1]! * f;
+      data[o + 2] = scan[x * 4 + 2]! * f;
+    }
+  }
+  return { w, h, data };
 }
 
 /* ----------------------------------------------------------------- run ----------------------------------------------------------------- */
 
 const stats: Record<string, { trisBefore: number; tris: number }> = {};
-for (const lod of ['hero', 'lod1', 'lod2'] as const) {
+for (const lod of ['hero', 'lod1', 'lod2', 'lod3'] as const) {
   const r = await buildCar(lod);
   stats[relative(OUT, r.file)] = r;
 }

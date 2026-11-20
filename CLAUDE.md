@@ -59,13 +59,16 @@ npm run db:migrate   # apply migrations + seed catalogue to DATABASE_URL (server
 npm run map:extract  # PBF → tools/mapbuild/data/raw/chennai-extract.json (needs pyosmium + the PBF; see M5 notes)
 npm run map:build    # extract → packages/shared/src/map/chennai.map.json (graph, verified starts, calibrated courses)
 npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-key <key> --start
+npm run assets:fetch # download licensed 3D/texture sources (sha256-pinned, tools/assets/sources.lock.json)
+npm run assets:build # optimise → apps/web/public/assets + regenerate docs/ASSETS.md
+# /test-drive?auto=1&bench=60  offline visual checkpoint + on-device benchmark (never touches the event)
 ```
 
 ## Environment variables
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M8 automated acceptance tests pass locally. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
+M1–M8 automated acceptance tests pass locally. Visual rebuild done (see docs/VISUALS.md); real-phone FPS still unmeasured. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -128,3 +131,12 @@ M1–M8 automated acceptance tests pass locally. Open, manual and owner-dependen
 - Boot warm-up: `WorldSim.prewarm()` (corridor building cells, road index) + `WorldSim.warmJit()` on a throwaway sim.
 - Tests: `restart.test.ts`, `storm.test.ts`, `security.test.ts` (main suite); `load.perf.test.ts`, `fairness.perf.test.ts`, `tick.perf.test.ts` (isolated perf suite). Load CLI: `--roles` adds 3 role clients per squad + host/projector observers.
 - Ops: `docs/RUNBOOK.md`, `apps/server/Dockerfile`, `apps/server/fly.toml.example` (not built in this environment).
+
+## Code map (Visual rebuild)
+- `tools/assets/src/{sources,fetch,build}.ts` — licensed sources (licence, authors, modifications), sha256-pinned fetch, gltf-transform/meshoptimizer/sharp optimisation (car hero/LOD1/LOD2/LOD3, Khronos logos removed, WebP textures, HDR→sky). Output committed in `apps/web/public/assets`; inventory `docs/ASSETS.md`. NEVER add an asset without reading its licence; trademarks must be removed.
+- `apps/web/src/game/render/` — `vehicles.ts` (GLB car templates, HeroCar, instanced CarFleet), `world.ts` (per-cell roads/markings/kerbs/footpaths/medians/zebras, street furniture, textured buildings, signals; everything clipped against other carriageways), `materials.ts` (PBR + sky/IBL), `traffic.ts`, `fx.ts`, `geo.ts`, `autoQuality.ts`.
+- `apps/web/src/game/scene.ts` — orchestrator, same public API as before (RacerView/Finale unchanged in contract); presets, shadows following the car, streaming, camera.
+- `apps/web/src/game/hud/` — racing HUD components + `hud.css` (shared by RacerView and TestDrive). Keep existing `data-testid`s (e2e depends on them).
+- `apps/web/src/game/TestDrive.tsx` — `/test-drive` offline OMR checkpoint (shared physics + traffic AI), autopilot, `?bench=`.
+- Engineer console: `CodingStepper` in `pages/RoleConsole.tsx`; Lobby gives it the screen during coding rounds.
+- Status/limits/measurements: `docs/VISUALS.md`.

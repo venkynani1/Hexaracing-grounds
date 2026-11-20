@@ -117,9 +117,9 @@ export const SOURCES: AssetSource[] = [
     page: 'https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky',
     files: [
       { name: 'sky_1k.hdr', url: `${ph}/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr` },
-      { name: 'sky_tonemapped.jpg', url: `${ph}/HDRIs/extra/Tonemapped%20JPG/kloofendal_48d_partly_cloudy_puresky.jpg` },
+      { name: 'sky_2k.hdr', url: `${ph}/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr` },
     ],
-    modifications: 'HDR used for image-based lighting/reflections; tonemapped JPG resized to WebP for the visible sky dome.',
+    modifications: '1k HDR used for image-based lighting/reflections; 2k HDR decoded + tonemapped (ACES) to a WebP sky dome (pure sky — no terrain).',
     usage: 'Sky, ambient light and reflections on paint/glass/wet roads.',
   },
   {

@@ -17,7 +17,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | ambientCG Facade019A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade019A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | ambientCG Facade018A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade018A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | ambientCG Facade001 | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade001 | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
-| Kloofendal 48d Partly Cloudy (Pure Sky) | hdri | Greg Zaal (original), Jarod Guest (sky edits) — Poly Haven | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | HDR used for image-based lighting/reflections; tonemapped JPG resized to WebP for the visible sky dome. | Sky, ambient light and reflections on paint/glass/wet roads. |
+| Kloofendal 48d Partly Cloudy (Pure Sky) | hdri | Greg Zaal (original), Jarod Guest (sky edits) — Poly Haven | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | 1k HDR used for image-based lighting/reflections; 2k HDR decoded + tonemapped (ACES) to a WebP sky dome (pure sky — no terrain). | Sky, ambient light and reflections on paint/glass/wet roads. |
 | Concrete Road Barrier | prop | Amal Kumar (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete_road_barrier | Simplified, textures resized, WebP, single GLB. | Median barriers on divided roads (OMR) and Route Lockdown closures. |
 
 ## Original (made for this project, no third-party licence)
@@ -33,7 +33,8 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/cars/car_hero.glb` | 2988 | 189,011 → 105,035 |
 | `public/assets/cars/car_lod1.glb` | 340 | 129,632 → 20,698 |
 | `public/assets/cars/car_lod2.glb` | 103 | 129,632 → 3,927 |
-| `public/assets/env/sky.webp` | 58 |  |
+| `public/assets/cars/car_lod3.glb` | 62 | 129,632 → 1,203 |
+| `public/assets/env/sky.webp` | 56 |  |
 | `public/assets/env/sky_1k.hdr` | 1401 |  |
 | `public/assets/props/barrier.glb` | 135 | 60,928 → 2,394 |
 | `public/assets/tex/asphalt_diff.webp` | 130 |  |
@@ -47,7 +48,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/tex/grass_diff.webp` | 45 |  |
 | `public/assets/tex/pavers_diff.webp` | 43 |  |
 | `public/assets/tex/pavers_nor.webp` | 27 |  |
-| **total** | **5696** | |
+| **total** | **5756** | |
 
 ## Source pins (sha256)
 
@@ -64,9 +65,9 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 - `Facade018A/Facade018A_1K-JPG.zip` — `b0d5bdc619b181985b8bb64e55624a780b19faeefd43073bd9dafbee11ebc2ac`
 - `Facade001/Facade001_1K-JPG.zip` — `e804ad49d692ca60b260394db2ec05d8a274ad319759f536a042471b58d38ea9`
 - `kloofendal_48d_partly_cloudy_puresky/sky_1k.hdr` — `fd94c84997b8a3c353b62c2125a9b44e19509956986a126e472684432a02d798`
-- `kloofendal_48d_partly_cloudy_puresky/sky_tonemapped.jpg` — `2bdd7abe32f1d2f7a626e0a6e45bb808313f29bd41d758eacbdba91560e93f04`
 - `concrete_road_barrier/concrete_road_barrier_1k.gltf` — `c371e87d303fff3f0c9fbe88520f7837514364e5c66aac3244e115ffa673d061`
 - `concrete_road_barrier/concrete_road_barrier.bin` — `64a4f9bc6e4af64d714a252c3c13428c430a60569deba3d52ca6b7dd3aa70d8c`
 - `concrete_road_barrier/textures/concrete_road_barrier_diff_1k.jpg` — `88b2d79829ffec7b11ac4d9c8554328f30b665d2c17f634197fde4f1ca8696fe`
 - `concrete_road_barrier/textures/concrete_road_barrier_arm_1k.jpg` — `b940847648012f2db8c24b16e07ad1e39b3bd33ea493203364deca209606e4b4`
 - `concrete_road_barrier/textures/concrete_road_barrier_nor_gl_1k.jpg` — `c1072f51ff5c3d7158f0fbb0aa26e82b816b745b9f03639c4816832af2b37c52`
+- `kloofendal_48d_partly_cloudy_puresky/sky_2k.hdr` — `5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198`
