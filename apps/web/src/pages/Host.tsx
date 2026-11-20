@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { ROLE_LABEL, type HostOverview, type MapMessage, type ServerMessage, type WorldMap } from '@redline/shared';
+import { ROLE_LABEL, formatClock, type HostOverview, type MapMessage, type ServerMessage, type WorldMap, type WorldState } from '@redline/shared';
 import { drawMap } from '../game/minimap';
 import { useWorldMap } from '../game/useWorldMap';
 import { api, HttpError } from '../lib/api';
@@ -15,6 +15,7 @@ export function Host() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [map, setMap] = useState<MapMessage | null>(null);
+  const [world, setWorld] = useState<WorldState | null>(null);
   const [mapId, setMapId] = useState<'test' | 'chennai' | undefined>();
   useEffect(() => void api.event().then((e) => setMapId(e.map), () => {}), []);
   const worldMap = useWorldMap(mapId);
@@ -24,6 +25,7 @@ export function Host() {
     else if (m.t === 'overview') setOv(m.overview);
     else if (m.t === 'clock') setOv((o) => (o ? { ...o, clock: m.clock } : o));
     else if (m.t === 'map') setMap(m);
+    else if (m.t === 'world') setWorld(m.state);
     else if (m.t === 'error' && m.error === 'UNAUTHORIZED') {
       sessionStorage.removeItem(KEY);
       setHostKey('');
@@ -131,6 +133,22 @@ export function Host() {
             <Qr value={registrationUrl} size={200} label="Scan to register" />
             <p className="hint">{registrationUrl}</p>
           </div>
+          {world && (
+            <div className="card" data-testid="host-world">
+              <h2>Director & world</h2>
+              <p>
+                Weather: <b data-testid="host-weather">{world.rain ? 'Rain (grip −20%)' : 'Dry'}</b> · Fuel price ×{world.fuelPriceMul} · Closures:{' '}
+                {world.closures.length ? world.closures.map((c) => c.label).join(', ') : 'none'}
+              </p>
+              <ul className="beats">
+                {world.beats.map((b) => (
+                  <li key={b.beat}>
+                    <span className="mono">{formatClock(b.atMs)}</span> {b.beat} — {b.decision}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {map && worldMap && <LiveMap map={map} world={worldMap} />}
           <div className="card squads">
             <h2>Squads</h2>

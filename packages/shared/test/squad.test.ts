@@ -22,7 +22,8 @@ describe('squad rubric', () => {
     expect(max.CODING).toBe(200);
     expect(max.TEAM_ASSESSMENTS).toBe(150);
     expect(max.DECEPTION).toBe(150);
-    expect(max.CAPTAIN_STRATEGY).toBe(50);
+    expect(max.CAPTAIN_STRATEGY).toBe(100);
+    expect(max.FUEL_MANAGEMENT).toBe(50);
   });
   it('every challenge window sits inside the 60-minute timeline, before the gate', () => {
     for (const c of CHALLENGE_SCHEDULE) {

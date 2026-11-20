@@ -66,8 +66,8 @@ export const VEHICLE_TUNING = {
   nitroSpeedMul: 1.2,
   nitroBurnPerS: 18,
   nitroRegenPerS: 1.5,
-  /** Fuel % per metre at full throttle (≈ 3 %/min at 25 m/s). */
-  fuelPerMetre: 0.002,
+  /** Fuel % per world metre at full throttle: a 30-min course needs ~1 pit stop from the 75% start. */
+  fuelPerMetre: 0.003,
   fuelIdlePerS: 0.002,
   /** When the tank is empty the car limps (no elimination; roadside recovery is M6). */
   limpThrottle: 0.15,

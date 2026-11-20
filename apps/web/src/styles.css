@@ -183,3 +183,15 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .footer-credits a, .credits a { color: var(--cyan); }
 .credits h2 { font-size: 16px; margin-top: 18px; }
 .credits p, .credits li { color: #c7cddb; line-height: 1.55; font-size: 14px; }
+
+/* ---------------- M6 ---------------- */
+.announce { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); width: min(90vw, 520px); background: rgba(232, 17, 45, 0.88); color: #fff; padding: 12px 16px; border-radius: 12px; font-weight: 800; text-align: center; letter-spacing: 0.02em; pointer-events: none; }
+.announce-card { background: rgba(232, 17, 45, 0.15); border: 1px solid var(--red); border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 14px; }
+.world-line { margin-bottom: 10px; }
+.pit-hud { position: absolute; left: 50%; transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 300px); background: rgba(8, 10, 14, 0.85); border: 1px solid var(--green); border-radius: 12px; padding: 10px 14px; font-size: 13px; width: min(90vw, 420px); pointer-events: none; }
+.pit-steps { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--muted); text-transform: capitalize; }
+.pit-steps .done { color: var(--green); }
+.fuel-hint { position: absolute; left: 50%; transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 290px); background: rgba(8, 10, 14, 0.8); border: 1px solid var(--green); color: var(--green); border-radius: 10px; padding: 6px 12px; font-size: 12px; display: flex; gap: 8px; align-items: center; pointer-events: none; max-width: 92vw; }
+.readings { font-family: ui-monospace, monospace; font-size: 13px; padding-left: 18px; }
+.pit-plan input[type='range'] { flex: 1; margin-left: 10px; }
+.beats { list-style: none; padding: 0; font-size: 13px; color: #c7cddb; }

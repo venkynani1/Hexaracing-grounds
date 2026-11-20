@@ -15,7 +15,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n server,web -c red,cyan \"npm run dev -w @redline/server\" \"npm run dev -w @redline/web\"",
-    "test": "vitest run",
+    "test": "vitest run && vitest run --config vitest.perf.config.ts",
     "test:watch": "vitest",
     "test:e2e": "npm run test:e2e -w @redline/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -24,7 +24,8 @@
     "db:migrate": "npm run db:migrate -w @redline/db",
     "loadtest": "npm run start -w @redline/loadtest --",
     "map:extract": "python3 tools/mapbuild/extract.py tools/mapbuild/data/raw/tamil_nadu.osm.pbf tools/mapbuild/data/raw/chennai-extract.json",
-    "map:build": "npm run build -w @redline/mapbuild"
+    "map:build": "npm run build -w @redline/mapbuild",
+    "test:perf": "vitest run --config vitest.perf.config.ts"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

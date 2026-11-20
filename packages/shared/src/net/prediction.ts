@@ -24,6 +24,8 @@ export class Predictor {
   errH = 0;
   lastCorrection = 0;
   braking = false;
+  /** Server is holding the car (pit / roadside recovery): no movement is predicted. */
+  held = false;
   private baseParams = VEHICLES.vortex_gt;
   private params = VEHICLES.vortex_gt;
   private buffKey = '';
@@ -41,6 +43,7 @@ export class Predictor {
   }
 
   private simulate(s: VehicleState, input: VehicleInput): VehicleState {
+    if (this.held) return s;
     const env = driveEnv(isOnRoad(this.net, s.x, s.z), this.rain);
     const next = stepVehicle(s, this.released ? input : NEUTRAL_INPUT, this.params, env, DT);
     const hit = resolveStatic(next, this.staticNear(next.x, next.z), this.net.bounds);
@@ -82,6 +85,7 @@ export class Predictor {
       this.params = applyBuffs(this.baseParams, buffs);
     }
     const auth = fromNet(snap.me);
+    this.held = snap.me.hd === true;
     if (!this.state) {
       this.state = auth;
       this.prev = auth;

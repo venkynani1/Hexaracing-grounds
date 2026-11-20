@@ -261,7 +261,14 @@ export interface Building {
   rot?: number;
 }
 
-export function generateBuildings(net: RoadNetwork, seed: string | number = 0): Building[] {
+export interface Exclusion {
+  x: number;
+  z: number;
+  r: number;
+}
+const excluded = (ex: readonly Exclusion[], x: number, z: number, size: number) => ex.some((e) => Math.hypot(e.x - x, e.z - z) < e.r + size);
+
+export function generateBuildings(net: RoadNetwork, seed: string | number = 0, exclusions: readonly Exclusion[] = []): Building[] {
   const rng = createRng(seed, `buildings:${net.version}`);
   const xs = [...new Set(net.nodes.map((n) => n.x))].sort((a, b) => a - b);
   const zs = [...new Set(net.nodes.map((n) => n.z))].sort((a, b) => a - b);
@@ -281,6 +288,7 @@ export function generateBuildings(net: RoadNetwork, seed: string | number = 0): 
           if (a === 1 && b === 1 && rng.next() < 0.6) continue; // courtyards / parks
           const w = lw * (0.6 + rng.next() * 0.3);
           const d = ld * (0.6 + rng.next() * 0.3);
+          if (excluded(exclusions, x0 + lw * (a + 0.5), z0 + ld * (b + 0.5), Math.hypot(w, d) / 2)) continue;
           out.push({
             x: x0 + lw * (a + 0.5),
             z: z0 + ld * (b + 0.5),
@@ -392,6 +400,7 @@ export class ProceduralBuildings {
   constructor(
     private readonly net: RoadNetwork,
     private readonly seed: string | number,
+    private readonly exclusions: readonly Exclusion[] = [],
     private readonly maxCells = 4000,
   ) {}
 
@@ -447,6 +456,7 @@ export class ProceduralBuildings {
           // Keep every carriageway (incl. other roads) clear.
           const n = nearestEdge(net, x, z, 60);
           if (n.clearance < Math.hypot(w, d) / 2 + 3) continue;
+          if (excluded(this.exclusions, x, z, Math.hypot(w, d) / 2)) continue;
           const tall = rng.next();
           out.push({ x, z, w: d, d: w, h: 6 + Math.floor(tall * tall * tall * 45), tone: rng.next(), rot });
         }

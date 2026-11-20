@@ -21,6 +21,7 @@ import {
   type Roster,
   type ServerMessage,
   type WorldStatus,
+  type WorldState,
   TRAFFIC_TYPES,
   CAR_FLAG_BRAKING,
   CAR_FLAG_GHOST,
@@ -32,6 +33,8 @@ import { conflict } from '../http/errors';
 import { audit } from '../services/audit';
 import type { PlayerRow, RegistrationService, TeamRow } from '../services/registration';
 import type { SquadService } from '../squad/SquadService';
+import type { Director } from '../director/Director';
+import type { PitService } from '../pit/PitService';
 
 export interface WorldRoomOptions {
   eventId: string;
@@ -124,6 +127,26 @@ export class WorldRoom {
   }
 
   squad: SquadService | null = null;
+  director: Director | null = null;
+  pit: PitService | null = null;
+
+  attachDirector(d: Director) {
+    this.director = d;
+  }
+
+  attachPit(p: PitService) {
+    this.pit = p;
+  }
+
+  /** ONE global update: the same serialized world state goes to every connected client (players + hosts). */
+  broadcastWorldState(state: WorldState) {
+    const data = JSON.stringify({ t: 'world', state } satisfies ServerMessage);
+    for (const [ws, ctx] of this.clients) if (ctx.kind !== 'pending' && ws.readyState === ws.OPEN) this.sendRaw(ws, data);
+  }
+
+  sendWorldStateTo(ws: WebSocket) {
+    if (this.director) this.sendRaw(ws, JSON.stringify({ t: 'world', state: this.director.state } satisfies ServerMessage));
+  }
 
   attachSquad(sq: SquadService) {
     this.squad = sq;
@@ -225,6 +248,7 @@ export class WorldRoom {
       this.sim.step();
       this.recordStep(performance.now() - t0, t);
     }
+    if (steps > 0 && this.pit) void this.pit.tick().catch((e) => console.error('[pit]', e));
     this.loopCount++;
     if (this.sim.checkpointPasses.length) void this.flushCheckpoints();
     this.broadcastWorld(steps > 0);
@@ -265,6 +289,7 @@ export class WorldRoom {
       bf: this.sim.activeBuffs(c.teamId).map((b) => [b.kind, b.remainingMs] as [typeof b.kind, number]),
       cs: c.course,
       cp: c.nextCp,
+      hd: !!c.held,
     };
   }
 
@@ -424,9 +449,12 @@ export class WorldRoom {
     if (this.clock.started && !this.clock.paused) {
       const elapsed = snap.status === 'COUNTDOWN' ? -1 : snap.elapsedMs;
       for (const beat of beatsBetween(this.lastElapsed, elapsed)) {
-        await audit(this.dbh.db, this.eventId, 'director', null, 'beat.fire', { beat: beat.id, atMs: beat.atMs, elapsedMs: elapsed });
+        // Seeded, bounded decision applied to the ONE world, then audit-logged.
+        const decision = this.director ? this.director.fire(beat.id, beat.atMs) : 'none';
+        await audit(this.dbh.db, this.eventId, 'director', null, 'beat.fire', { beat: beat.id, atMs: beat.atMs, elapsedMs: elapsed, decision });
       }
       this.lastElapsed = Math.max(this.lastElapsed, elapsed);
+      if (elapsed >= 0) this.director?.update(elapsed);
     }
     if (this.squad) await this.squad.onTick();
     if (changed) {

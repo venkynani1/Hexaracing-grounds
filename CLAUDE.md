@@ -50,7 +50,7 @@ docs/             SPEC, DESIGN, MILESTONES, PROGRESS, RUNBOOK
 ```
 npm install
 npm run dev          # server (:2567, embedded PGlite if DATABASE_URL unset) + web (:5173, proxies /api and /ws)
-npm test             # vitest: shared, db (PGlite), server (HTTP inject + real WS)
+npm test             # vitest: shared, db (PGlite), server (HTTP inject + real WS); then timing benchmarks alone (vitest.perf.config.ts)
 npm run test:e2e     # Playwright (boots its own server :2599 + vite :5199)
 npm run typecheck    # tsc for every workspace
 npm run build        # vite build of apps/web
@@ -65,7 +65,7 @@ npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-ke
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M5 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M6 (fuel & pit stops, Redline Director world events, weather).
+M1–M6 implemented and tested locally (M2's manual phone-FPS check still open) — see docs/PROGRESS.md. Next: M7 (Hexaware Gate assessment + escort transition, Welcome Convoy, championship, offer letters).
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -105,3 +105,10 @@ M1–M5 implemented and tested locally (M2's manual phone-FPS check still open) 
 - `packages/shared/src/sim/road.ts` — per-edge width/lanes/one-way, node stop-line radius + signal axis, spatial index (`nearestEdge`, `edgesNear`), oriented-box building collision, `ProceduralBuildings` (per 200 m cell, same on server and client). `sim/reference.ts` — reference driver used for calibration and tests.
 - Server: `MAP` env (`chennai` default, `test` for unit tests — test helper defaults to test), start-location selection (`/api/start-locations`, `/api/team/start-location`, capacity 6, auto-assign at START), DB sync of `start_locations` (+ `verified_at`) and `world_metadata`, checkpoint detection → `vehicle_checkpoints`.
 - Web: cell-streamed scene (400 m cells), cached full-map minimap with course + checkpoints, checkpoint guidance HUD, StartPicker, `/credits`, OSM attribution in racer HUD and host map.
+
+## Code map (M6)
+- Stations: `WorldMap.stations` (mapbuild places them at real OSM `amenity=fuel` locations near each course's two service-window bands; generic names; one disclosed "game facility" where OSM has none). `stationExclusions()` keeps procedural buildings off pads.
+- `apps/server/src/pit/PitService.ts` — FIFO queue per station, 4 bays, 60 s max dwell (auto refuel + release), 6 steps (enter detected by sim; Captain plan/confirm, Engineer diagnose, Deceiver verify via `/api/squad/pit/*`), credits, `pit_stops`/`fuel_transactions`, window scoring. Server-only content in `pit/content.ts`.
+- `WorldSim`: `hold/release` (pit + roadside recovery; inputs still acked, `NetCar.hd` tells prediction), station zones non-collidable, fuel 0 → 8 s recovery (+15%, 50 credits).
+- `apps/server/src/director/` — `Director` applies each beat from `createRng(seed, "beat:<id>")` over bounded options (`packages/shared/src/director.ts`), audit-logs the decision, expires timed effects; `closures.ts` only accepts a closure if every course keeps a route from every node. World state goes to ALL clients as one `{t:'world', state}` (monotonic `rev`).
+- Perf benchmarks live in `*.perf.test.ts` and run isolated (`npm run test:perf`).

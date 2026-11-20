@@ -11,9 +11,9 @@ device and graphics preset cannot change any of these.
 | Driving | 250 | 10 route checkpoints × 25 (M5/M7 — not implemented yet). Ramming ghost-outs are recorded as penalties for the clean-driving component. |
 | Coding | 200 | Coding Round 1 (03:00–10:00) and 2 (33:00–42:00): 4 questions each. 25 first try, 10 second try, max 2 attempts. **Implemented (M4).** |
 | Deception | 150 | Bluff Round 1 (10:30–16:00) and 2 (25:00–31:00): +25 for voting the real answer; +10 per player fooled by your squad's bluff (max 50). Max 75 per round. **Implemented (M4).** |
-| Captain's strategy | 100 | Navigation Intel (24:00–31:00): 50 first try, 20 second try. **Implemented (M4).** Remaining 50: fuel/service decisions at the pit windows (M6). |
+| Captain's strategy | 100 | Navigation Intel (24:00–31:00): 50 first try, 20 second try. **Implemented (M4).** Pit stops: +25 per service window if the confirmed service plan covers the Engineer-diagnosed system AND the Deceiver flagged the false report. **Implemented (M6).** |
 | Team assessments | 150 | Four-Key Puzzle 1 (10:00–17:00) and 2 (42:00–50:00): 75 / 40 / 20 by attempt, max 3 attempts; only the Captain submits, using four private clues held by four different roles. **Implemented (M4).** |
-| Fuel management | 50 | Pit-stop flow and fuel at finish (M6). |
+| Fuel management | 50 | First completed pit stop in each service window (17:00–24:00, 36:00–41:00): 25 with a correct Engineer diagnosis, 10 otherwise. **Implemented (M6).** Roadside recovery and unscored stops cost credits only, never points. |
 | Hexaware gate | 100 | Gate assessment 50:00–55:00 (M7). |
 
 ## Rules

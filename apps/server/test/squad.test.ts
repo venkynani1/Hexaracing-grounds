@@ -235,7 +235,8 @@ describe('M4: Captain navigation + power-ups', () => {
     expect((await post(s, '/api/squad/navigation/nav-1', { answer: ans, idempotencyKey: key() }, auth(cap))).body).toMatchObject({ correct: true, points: 20 });
     await settle();
     expect(view(t0.m.RACER).score.byCategory.CAPTAIN_STRATEGY).toBe(20);
-    expect(view(t0.m.RACER).waypoint).not.toBe('north_gate');
+    // The correct navigation answer also sets the squad waypoint to that place.
+    expect(view(t0.m.RACER).waypoint).toBe(s.room.sim.map.waypoints.find((w) => w.label === ans)!.id);
   });
 });
 

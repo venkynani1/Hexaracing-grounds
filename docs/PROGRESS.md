@@ -2,6 +2,31 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-20 — Milestone 6: Fuel & suspense
+
+### What runs
+- **Shared service stations**: 8 stations on the course corridors — 7 at real OSM fuel-station locations (15–45 m from the mapped station), 1 clearly labelled game facility on the East Coast Road where OSM has none within 600 m. Generic names (no fuel brands). Forecourt, canopy and 4 bays rendered; shown on the minimap.
+- **Pit stops (6 steps, four roles)**: Racer pulls in and stops (server-detected) → FIFO queue → bay (pit crew rolls the car in, disclosed) → Captain selects fuel/repair/tyres with garage credits → Engineer reads four sensor readings and names the out-of-spec system → Deceiver flags the false one of three mechanic reports about the real car → Captain confirms → service time → car released at the station exit. Max dwell 60 s: unconfirmed stops get an affordable refuel and are released. Cars in a station are non-collidable. Persisted in `pit_stops` / `fuel_transactions`; scored per service window (FUEL_MANAGEMENT 25/10, CAPTAIN_STRATEGY 25).
+- **Fuel economy**: burn raised so the 75% start needs ~1 stop on a 30-min course (provisional).
+- **Roadside recovery**: empty tank → 8 s disclosed stop, +15% fuel, 50 credits (free if broke). Never elimination.
+- **Redline Director** effects (seeded per beat, bounded, audit-logged with the decision): First Contact (announcement), Traffic Shock (a named course road's traffic crawls 3 min), Fuel Crisis (fuel ×1.5 for 5 min), Classified Envelope (same seeded power-up for every Captain), Route Lockdown (6-min closure with physical barriers; only accepted if every course keeps a route), Monsoon Protocol (shared rain, grip −20%, 37:00–45:00), Final Recruitment Alert, Total Redline (nitro refill for all).
+- **Global world channel**: `{t:'world', state}` with a monotonic revision to every player and host in the same broadcast; barriers feed server collision, client prediction and rendering; rain particles; Director banner; host Director panel with the beat log.
+
+### Tested
+- `npm test`: 97 tests + 2 isolated timing benchmarks. New `m6.test.ts`: full 6-step pit flow with four real role connections (role-filtered views, wrong-role 403s, Engineer solves by reading specs, Deceiver by comparing with the real car, credits charged, car serviced and released at the exit, FUEL 25 + CAPTAIN 25 scored, DB rows); 6 squads → 4 bays in arrival order + 2 queued FIFO, max-dwell release at 60 s, all served, no contacts in the station; fuel exhaustion → recovery → driving again; Director fast-forward 0→60:00 twice with the same seed (identical beat log; every beat once, in order; closure active then expired; rain 37–45) and a different seed (different decisions); closures valid for 300 seeds + a gate-cutting closure rejected; Monsoon Protocol reaches racer, role client and host with the same revision and payload.
+- `npm run test:e2e`: 6 tests. New M6: warp to 37:00 → all four phones and the host show Monsoon Protocol / Rain.
+- Benchmarks moved to `tick.perf.test.ts` (isolated: under parallel test load the Chennai p99 occasionally exceeded 10 ms, isolated it's ~5 ms).
+
+### Known limitations / open risks
+- Pit flow, fuel burn and prices are provisional; needs a playtest (does every squad realistically stop once?).
+- The pit stop UI isn't covered by a browser test (server flow is); a car can't be driven into a station in headless e2e without a teleport hook.
+- Rain visuals are fog/sky + particles; no wet-road reflections yet.
+- Closure barriers are boxes; traffic avoids closed edges at junctions but agents already on a closed edge drive to the barrier and queue (disclosed: they're "stuck at the barricade").
+- Director state lives in memory (rev-numbered); restart recovery is M8.
+
+### Next (M7)
+- Hexaware Gate assessment 50:00–55:00 (Racer precision parking, Engineer debugging, Deceiver authorization check, Captain combined access code), disclosed escort transition (0 driving points for skipped checkpoints), Welcome Convoy of all 30 real cars, driving score from checkpoints, championship with tie-breaks, offer-letter PDFs.
+
 ## 2026-11-20 — Milestone 5: Chennai geography
 
 ### What runs

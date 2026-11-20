@@ -44,6 +44,25 @@ export interface CourseDef {
   checkpoints: Checkpoint[];
 }
 
+/** A shared service station (location from OSM amenity=fuel; generic name, no brands). */
+export interface StationDef {
+  id: string;
+  name: string;
+  osm: string;
+  /** Real-world distance from the pad to the OSM fuel station it represents (transparency). */
+  osmDistanceM?: number;
+  /** Pad centre (off the carriageway). */
+  x: number;
+  z: number;
+  /** Road direction alongside the pad. */
+  heading: number;
+  /** Cars inside this radius of the pad centre, slow enough, enter the station. */
+  radius: number;
+  bays: { x: number; z: number; heading: number }[];
+  /** Release point on the road, downstream. */
+  exit: { x: number; z: number; heading: number };
+}
+
 export interface WorldMap {
   id: 'test' | 'chennai';
   version: string;
@@ -60,6 +79,7 @@ export interface WorldMap {
   courses: Record<string, CourseDef>;
   /** Squads per start location (spawn crowding). */
   maxSquadsPerStart: number;
+  stations: StationDef[];
 }
 
 /** Compact JSON as written by tools/mapbuild. */
@@ -83,6 +103,7 @@ export interface MapJson {
   waypoints: WorldMap['waypoints'];
   courses: Record<string, CourseDef>;
   maxSquadsPerStart: number;
+  stations: StationDef[];
 }
 
 export function edgeHalfWidth(lanes: number, oneway: boolean, laneWidth: number) {
@@ -166,5 +187,11 @@ export function decodeMap(j: MapJson): WorldMap {
     waypoints: j.waypoints,
     courses: j.courses,
     maxSquadsPerStart: j.maxSquadsPerStart,
+    stations: j.stations ?? [],
   };
+}
+
+/** Areas no procedural building may occupy (station pads). */
+export function stationExclusions(map: { stations: StationDef[] }) {
+  return map.stations.map((s) => ({ x: s.x, z: s.z, r: s.radius + 12 }));
 }

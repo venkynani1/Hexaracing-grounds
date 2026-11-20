@@ -10,6 +10,7 @@ import {
   type SessionResponse,
   type WorldInfo,
   type SquadView,
+  type WorldState,
 } from '@redline/shared';
 import { RoleConsole } from './RoleConsole';
 import { StartPicker } from './StartPicker';
@@ -31,6 +32,7 @@ export function Lobby() {
   const [error, setError] = useState('');
   const [world, setWorld] = useState<WorldInfo | null>(null);
   const [squad, setSquad] = useState<SquadView | null>(null);
+  const [worldState, setWorldState] = useState<WorldState | null>(null);
   const [telemetry, setTelemetry] = useState<{ car: NetCar; released: boolean } | null>(null);
   const snapListeners = useRef(new Set<(s: WorldFeed) => void>());
   const subscribe = useCallback((fn: (s: WorldFeed) => void) => {
@@ -76,6 +78,7 @@ export function Lobby() {
       setClock(m.clock);
       setWorld(m.world);
     } else if (m.t === 'squad') setSquad(m.view);
+    else if (m.t === 'world') setWorldState(m.state);
     else if (m.t === 'car') setTelemetry({ car: m.car, released: m.released });
     else if (m.t === 'roster') setRoster(m.roster);
     else if (m.t === 'clock') setClock(m.clock);
@@ -102,7 +105,7 @@ export function Lobby() {
   if (inWorld && me?.role === 'RACER' && world && worldMap) {
     return (
       <Suspense fallback={<main className="page narrow"><Brand small /><p className="muted">Loading the world…</p></main>}>
-        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} map={worldMap} />
+        <RacerView teamId={roster.teamId} squadName={roster.name} seed={world.seed} clock={live} offset={offset} send={send} subscribe={subscribe} squad={squad} map={worldMap} world={worldState} />
       </Suspense>
     );
   }
@@ -174,7 +177,7 @@ export function Lobby() {
       <footer className="footer-credits">
         <a href="/credits">Credits &amp; map data: © OpenStreetMap contributors (ODbL)</a>
       </footer>
-      {inWorld && squad && session && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} />}
+      {inWorld && squad && session && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} world={worldState} />}
     </main>
   );
 }

@@ -1,6 +1,7 @@
 import type { EventStatus, Role } from './enums';
 import type { PhaseId } from './timeline';
 import type { BuffKind, SquadView } from './squad';
+import type { WorldState } from './director';
 
 /* ---------------- HTTP DTOs ---------------- */
 
@@ -136,6 +137,8 @@ export interface NetCar {
   /** course code (start location) and index of the next checkpoint (== count passed) */
   cs: string;
   cp: number;
+  /** held by the server (in a pit bay / queue, or roadside recovery): client must not predict movement */
+  hd: boolean;
 }
 
 export const CAR_FLAG_BRAKING = 1;
@@ -211,4 +214,5 @@ export type ServerMessage =
   | { t: 'car'; tick: number; car: NetCar; released: boolean }
   | MapMessage
   | { t: 'squad'; view: SquadView }
+  | { t: 'world'; state: WorldState }
   | { t: 'error'; error: string; message: string };

@@ -42,6 +42,21 @@ export function testMap(): WorldMap {
     ],
     courses: {},
     maxSquadsPerStart: 30,
+    // One station beside the northbound road x = −480 (between nodes 0 and 4), east side.
+    stations: [
+      {
+        id: 'test-station',
+        name: 'Test Service Station',
+        osm: 'synthetic',
+        x: -458,
+        z: -320,
+        // Keep-left: the east side of this road carries southbound traffic, so the station faces south.
+        heading: Math.PI,
+        radius: 14,
+        bays: [-12, -4, 4, 12].map((dz) => ({ x: -456, z: -320 + dz, heading: Math.PI })),
+        exit: { x: -478.25, z: -350, heading: Math.PI },
+      },
+    ],
   };
   return cached;
 }

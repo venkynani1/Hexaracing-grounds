@@ -41,6 +41,9 @@ export const SQUAD_RUBRIC = {
   fourKey: { category: 'TEAM_ASSESSMENTS' as ScoringCategory, byAttempt: [75, 40, 20], maxAttempts: 3 },
   bluff: { category: 'DECEPTION' as ScoringCategory, detect: 25, perFooled: 10, maxFooled: 50 },
   navigation: { category: 'CAPTAIN_STRATEGY' as ScoringCategory, firstTry: 50, secondTry: 20, maxAttempts: 2 },
+  /** Per service window, first completed stop: FUEL_MANAGEMENT 25 (correct diagnosis) or 10; CAPTAIN_STRATEGY 25 if the
+   *  confirmed plan covers the diagnosed system AND the Deceiver flagged the false report. */
+  pit: { fuel: 25, fuelWrong: 10, strategy: 25 },
 } as const;
 
 /** Max points per category reachable from the schedule above (checked against caps in tests). */
@@ -53,6 +56,9 @@ export function rubricMaxima(): Partial<Record<ScoringCategory, number>> {
     if (c.kind === 'bluff') add('DECEPTION', SQUAD_RUBRIC.bluff.detect + SQUAD_RUBRIC.bluff.maxFooled);
     if (c.kind === 'navigation') add('CAPTAIN_STRATEGY', SQUAD_RUBRIC.navigation.firstTry);
   }
+  // Pit stops: one scored stop per service window.
+  add('FUEL_MANAGEMENT', SQUAD_RUBRIC.pit.fuel * 2);
+  add('CAPTAIN_STRATEGY', SQUAD_RUBRIC.pit.strategy * 2);
   return out;
 }
 
@@ -148,6 +154,35 @@ export interface ChallengeView {
   results?: { truth: string; myTeamFooled: number; detected: boolean; points: number } | null;
 }
 
+export type PitStage = 'queued' | 'in_bay' | 'servicing' | 'done';
+
+export interface PitPlan {
+  fuelPct: number;
+  repair: boolean;
+  tyres: boolean;
+}
+
+/** The squad's current pit stop, filtered for this player's role. */
+export interface PitView {
+  stopId: string;
+  stationId: string;
+  stationName: string;
+  stage: PitStage;
+  queuePosition: number;
+  bay: number | null;
+  dwellLeftMs: number | null;
+  serviceLeftMs: number | null;
+  /** step completion flags: 1 enter, 2 select, 3 diagnose, 4 verify, 5 confirm, 6 return */
+  steps: { enter: boolean; select: boolean; diagnose: boolean; verify: boolean; confirm: boolean; release: boolean };
+  plan: PitPlan | null;
+  prices: { fuelPerPct: number; repairPerPt: number; tyres: number };
+  /** Engineer only */
+  diagnostics?: { readings: string[]; options: string[]; chosen: string | null };
+  /** Deceiver only */
+  reports?: { items: string[]; chosen: number | null };
+  result: { diagnosisCorrect: boolean | null; falseSpotted: boolean | null; applied: PitPlan | null; cost: number } | null;
+}
+
 export interface SquadView {
   teamId: string;
   role: Role;
@@ -160,4 +195,6 @@ export interface SquadView {
   waypoints: { id: WaypointId; label: string }[];
   buffs: { kind: BuffKind; remainingMs: number }[];
   score: { total: number; byCategory: Record<ScoringCategory, number> };
+  credits: number;
+  pit: PitView | null;
 }

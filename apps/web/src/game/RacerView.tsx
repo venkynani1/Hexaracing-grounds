@@ -15,6 +15,8 @@ import {
   type MapMessage,
   type Snapshot,
   type SquadView,
+  type WorldState,
+  stationExclusions,
 } from '@redline/shared';
 import { InputState, type Control } from './input';
 import { drawMap, type MapDot } from './minimap';
@@ -32,6 +34,7 @@ export interface RacerViewProps {
   subscribe: (fn: (m: WorldFeed) => void) => () => void;
   squad: SquadView | null;
   map: WorldMap;
+  world: WorldState | null;
 }
 
 interface Hud {
@@ -57,6 +60,10 @@ interface Hud {
   cpAngle: number | null;
   cpDist: number;
   cells: number;
+  stName: string;
+  stDist: number;
+  stAngle: number;
+  held: boolean;
 }
 
 const STEP_MS = 50;
@@ -87,9 +94,17 @@ export default function RacerView(props: RacerViewProps) {
     gameRef.current = game;
     game.setMyCar(props.teamId);
     // Same static obstacles as the server so prediction matches (procedural cells on real maps).
-    const pb = map.id === 'test' ? null : new ProceduralBuildings(net, props.seed);
-    const fixed = map.id === 'test' ? generateBuildings(net, props.seed) : [];
-    const predictor = new Predictor(net, pb ? (x: number, z: number) => pb.near(x, z, 40) : fixed);
+    const ex = stationExclusions(map);
+    const pb = map.id === 'test' ? null : new ProceduralBuildings(net, props.seed, ex);
+    const fixed = map.id === 'test' ? generateBuildings(net, props.seed, ex) : [];
+    // Closure barriers from the global world state are shared obstacles: predict them too.
+    const barriers = () =>
+      (propsRef.current.world?.closures ?? []).flatMap((c) => c.barriers.map((b) => ({ x: b.x, z: b.z, w: b.width, d: 1.2, h: 1.1, tone: 0, rot: b.heading })));
+    const predictor = new Predictor(net, (x: number, z: number) => {
+      const bs = barriers();
+      const base = pb ? pb.near(x, z, 40) : fixed;
+      return bs.length ? [...base, ...bs] : base;
+    });
     const others = new Interpolator<{ id: number; x: number; z: number; heading: number; flags: number }>();
     // Global map channel (1 Hz): every squad, always — names + far positions.
     const roster = new Map<number, { teamId: string; name: string; x: number; z: number; heading: number }>();
@@ -158,6 +173,7 @@ export default function RacerView(props: RacerViewProps) {
         for (const [cid, r] of roster) if (cid !== myCid && !nearIds.has(cid)) dots.push({ id: cid, x: r.x, z: r.z, heading: r.heading, color: '#ff8a9a' });
         for (const c of near) dots.push({ id: c.id, x: c.x, z: c.z, heading: c.heading, ghost: (c.flags & CAR_FLAG_GHOST) !== 0 });
         const wpNode = waypointNode(map, propsRef.current.squad);
+        for (const st of map.stations) dots.push({ id: st.id, x: st.x, z: st.z, heading: 0, color: '#2bd67b' });
         if (pose) dots.push({ id: 'me', x: pose.x, z: pose.z, heading: pose.heading, me: true });
         const course = lastMe?.cs ? map.courses[lastMe.cs] : undefined;
         const ctx = mapRef.current.getContext('2d');
@@ -170,6 +186,7 @@ export default function RacerView(props: RacerViewProps) {
       }
       game.updateTraffic(traffic.sample(serverNow));
       game.updateSignals(lastSnap.simMs + (live ? now - lastSnap.at : 0));
+      game.setClosures(propsRef.current.world?.closures ?? []);
       game.scene.render();
       if (now - resAt > 500) {
         resAt = now;
@@ -210,6 +227,14 @@ export default function RacerView(props: RacerViewProps) {
             };
           })(),
           cells: game.loadedCells,
+          ...(() => {
+            let best: { name: string; d: number; a: number } | null = null;
+            for (const st of map.stations) {
+              const d = Math.hypot(st.x - pose.x, st.z - pose.z);
+              if (!best || d < best.d) best = { name: st.name, d, a: Math.atan2(st.x - pose.x, st.z - pose.z) - pose.heading };
+            }
+            return { stName: best?.name ?? '', stDist: best?.d ?? 0, stAngle: best?.a ?? 0, held: !!lastMe?.hd };
+          })(),
         });
       }
     });
@@ -285,6 +310,15 @@ export default function RacerView(props: RacerViewProps) {
         <div className="banner">Cars release at 03:00 — City Sprint. Engines warm.</div>
       )}
       {clock?.status === 'PAUSED' && <div className="banner">Paused by host</div>}
+      <Announcement world={props.world} elapsedMs={clock?.elapsedMs ?? 0} />
+      {props.squad?.pit && props.squad.pit.stage !== 'done' && <PitHud pit={props.squad.pit} />}
+      {hud && !props.squad?.pit?.stage?.match(/queued|in_bay|servicing/) && hud.fuel < 35 && hud.stName && (
+        <div className="fuel-hint" data-testid="fuel-hint">
+          <span className="wp-arrow" style={{ transform: `rotate(${hud.stAngle}rad)` }}>▲</span>
+          Low fuel — {hud.stName} · {Math.round(hud.stDist)} m · pull in and stop on the forecourt
+        </div>
+      )}
+      {hud?.held && !props.squad?.pit && <div className="banner">Roadside recovery — tank empty. +15% fuel in a few seconds (50 credits).</div>}
       {hud?.ghost && <div className="banner">Ghosted for repeated ramming — non-collidable for 5 s, clean-driving penalty logged</div>}
       {hud?.canReset && (
         <button className="btn primary reset-btn" onClick={() => props.send({ t: 'reset' })} data-testid="btn-reset">
@@ -373,6 +407,46 @@ function RacerSquadHud({ squad, hud, map }: { squad: SquadView; hud: Hud | null;
       {squad.buffs.map((b) => (
         <span key={b.kind} className="chip">⚡ {b.kind.replace('_', ' ')}</span>
       ))}
+    </div>
+  );
+}
+
+/** Latest Director announcement, shown for 12 s of event time. */
+function Announcement({ world, elapsedMs }: { world: WorldState | null; elapsedMs: number }) {
+  const a = world?.announcement;
+  if (!a || elapsedMs - a.atMs > 12_000 || elapsedMs < a.atMs - 1000) return null;
+  return (
+    <div className="announce" data-testid="announcement">
+      {a.text}
+    </div>
+  );
+}
+
+const STEP_LABEL: [keyof import('@redline/shared').PitView['steps'], string][] = [
+  ['enter', 'Enter'],
+  ['select', 'Captain selects'],
+  ['diagnose', 'Engineer diagnostics'],
+  ['verify', 'Deceiver check'],
+  ['confirm', 'Captain confirms'],
+  ['release', 'Back on road'],
+];
+
+function PitHud({ pit }: { pit: import('@redline/shared').PitView }) {
+  return (
+    <div className="pit-hud" data-testid="pit-hud">
+      <div className="eyebrow">{pit.stationName}</div>
+      <div>
+        {pit.stage === 'queued' ? `Queued — position ${pit.queuePosition}` : pit.stage === 'in_bay' ? `Bay ${pit.bay! + 1} — pit crew rolled you in` : 'Servicing…'}
+        {pit.dwellLeftMs != null && ` · ${Math.ceil(pit.dwellLeftMs / 1000)} s max`}
+        {pit.serviceLeftMs != null && ` · ${Math.ceil(pit.serviceLeftMs / 1000)} s`}
+      </div>
+      <div className="pit-steps">
+        {STEP_LABEL.map(([k, l]) => (
+          <span key={k} className={pit.steps[k] ? 'done' : ''}>
+            {pit.steps[k] ? '✓' : '·'} {l}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

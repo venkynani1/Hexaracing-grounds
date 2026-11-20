@@ -56,10 +56,12 @@ Status: `apps/server/test/squad.test.ts` (+ `content.test.ts`, which executes ev
 Status: `apps/server/test/chennai.test.ts` + `apps/web/e2e/lobby.spec.ts` (M5 test) pass locally. First GitHub Actions run still to be observed.
 
 ## M6 — Fuel & suspense
-- [ ] Pit-stop 6-step flow end-to-end with four roles; FIFO queue; max dwell enforced; station never blocked.
-- [ ] Fuel exhaustion → roadside recovery, no elimination.
-- [ ] Director: running a full 60-min timeline in fast-forward fires every beat exactly once, in order; same seed → identical beat log; road closure always leaves a valid route for every squad.
-- [ ] Weather change visible to all clients within one global update.
+- [x] Pit-stop 6-step flow end-to-end with four roles; FIFO queue; max dwell enforced; station never blocked.
+- [x] Fuel exhaustion → roadside recovery, no elimination.
+- [x] Director: running a full 60-min timeline in fast-forward fires every beat exactly once, in order; same seed → identical beat log; road closure always leaves a valid route for every squad.
+- [x] Weather change visible to all clients within one global update.
+
+Status: `apps/server/test/m6.test.ts` + M6 Playwright test pass locally. First GitHub Actions run still to be observed.
 
 ## M7 — Final experience
 - [ ] Gate assessment open to all squads 50:00–55:00; escort transition awards 0 driving points for skipped checkpoints.

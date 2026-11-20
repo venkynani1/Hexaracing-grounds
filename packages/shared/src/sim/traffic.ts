@@ -91,6 +91,10 @@ export class TrafficSystem {
   }
 
   private readonly exclude: Set<number>;
+  /** Closed edge ids (Route Lockdown): traffic never turns into them. */
+  blockedEdges = new Set<number>();
+  /** Per-edge speed multiplier (Traffic Shock). */
+  edgeSpeedMul = new Map<number, number>();
   private readonly spawnPool: { de: number; lane: number; s: number }[];
   private nextId = 1;
 
@@ -138,8 +142,9 @@ export class TrafficSystem {
   private chooseNext(a: TrafficAgent, toId: number): number | null {
     const net = this.net;
     const legal = net.out[toId]!;
-    let options = legal.filter((d) => d !== deReverse(a.de));
-    if (!options.length) options = legal;
+    const open = legal.filter((d) => !this.blockedEdges.has(d >> 1));
+    let options = open.filter((d) => d !== deReverse(a.de));
+    if (!options.length) options = open.length ? open : legal;
     if (!options.length) return null;
     const w = options.map((d) => 1 / (1 + net.edges[d >> 1]!.cls));
     let r = this.rng.next() * w.reduce((x, y) => x + y, 0);
@@ -245,7 +250,7 @@ export class TrafficSystem {
     const accels = this.agents.map((a) => {
       const t = TRAFFIC_TYPES[a.type];
       const limit = (a.conn ? net.edges[a.conn.toDe >> 1]! : net.edges[a.de >> 1]!).speedLimit;
-      const v0 = limit * t.speedMul * a.cruise * (a.conn ? 0.6 : 1);
+      const v0 = limit * t.speedMul * a.cruise * (a.conn ? 0.6 : 1) * (this.edgeSpeedMul.get((a.conn ? a.conn.toDe : a.de) >> 1) ?? 1);
       const { gap, leadSpeed } = this.gapAhead(a, simMs, obstacles, poses, byDe, onConn);
       const v = a.speed;
       let acc = t.accel * (1 - Math.pow(v / v0, 4));

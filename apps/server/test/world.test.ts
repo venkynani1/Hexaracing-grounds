@@ -5,29 +5,6 @@ import { INPUT_BUDGET_MAX, WorldSim } from '../src/world/WorldSim';
 import { HOST_KEY, connectWs, get, makeServer, post, until } from './helpers';
 
 describe('world sim', () => {
-  it('tick p99 < 2 ms with 1 car + 100 traffic agents (benchmark)', () => {
-    const sim = new WorldSim({ seed: 'bench', trafficCount: 100 });
-    sim.spawn([{ teamId: 't1', name: 'Bench' }]);
-    sim.released = true;
-    expect(sim.traffic.agents.length).toBe(100);
-    let seq = 0;
-    for (let i = 0; i < 200; i++) {
-      sim.pushInput('t1', ++seq, { ...NEUTRAL_INPUT, throttle: 1, steer: Math.sin(i / 15) * 0.3 });
-      sim.step();
-    }
-    const d: number[] = [];
-    for (let i = 0; i < 3000; i++) {
-      sim.pushInput('t1', ++seq, { ...NEUTRAL_INPUT, throttle: 1, steer: Math.sin(i / 15) * 0.3 });
-      const t0 = performance.now();
-      sim.step();
-      d.push(performance.now() - t0);
-    }
-    d.sort((a, b) => a - b);
-    const p99 = d[Math.floor(d.length * 0.99)]!;
-    console.log(`[bench] tick p50=${d[1500]!.toFixed(3)}ms p99=${p99.toFixed(3)}ms`);
-    expect(p99).toBeLessThan(2);
-  });
-
   it('rejects replayed and out-of-order input seq', () => {
     const sim = new WorldSim({ seed: 's', trafficCount: 0 });
     sim.spawn([{ teamId: 't', name: 'T' }]);

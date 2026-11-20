@@ -17,6 +17,8 @@ import { RegistrationService } from './services/registration';
 import { WorldRoom, clockFromEventRow } from './world/WorldRoom';
 import { WorldSim } from './world/WorldSim';
 import { SquadService, type Actor } from './squad/SquadService';
+import { PitService } from './pit/PitService';
+import { Director } from './director/Director';
 import { audit } from './services/audit';
 
 export interface BuiltServer {
@@ -100,6 +102,11 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     config.sessionSecret,
   );
   room.attachSquad(squad);
+  const director = new Director(String(event.seed), sim, squad, (state) => room.broadcastWorldState(state));
+  room.attachDirector(director);
+  const pit = new PitService(db.db, String(event.seed), sim, squad, () => clock.elapsedMs(now()), () => director.state.fuelPriceMul);
+  squad.pitView = (teamId, role) => pit.viewFor(teamId, role);
+  room.attachPit(pit);
   if (clock.started) {
     await room.spawnCars();
     await squad.activate([...sim.cars.keys()]);
@@ -219,6 +226,10 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   app.post('/api/squad/waypoint', async (req) => squad.setWaypoint(await actor(req), body(req).waypoint));
   app.post('/api/squad/powerup', async (req) => squad.deployPowerUp(await actor(req), body(req).kind));
   app.post('/api/squad/bluff/:id/entry', async (req) => squad.bluffEntry(await actor(req), param(req, 'id'), body(req).text));
+  app.post('/api/squad/pit/plan', async (req) => pit.plan(await actor(req), body(req)));
+  app.post('/api/squad/pit/diagnose', async (req) => pit.diagnose(await actor(req), body(req).answer));
+  app.post('/api/squad/pit/verify', async (req) => pit.verify(await actor(req), body(req).index));
+  app.post('/api/squad/pit/confirm', async (req) => pit.confirm(await actor(req)));
   app.post('/api/squad/bluff/:id/vote', async (req) => squad.bluffVote(await actor(req), param(req, 'id'), body(req).choiceId));
 
   /* ---------- host ---------- */
@@ -305,6 +316,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
             world: { seed: sim.opts.seed, mapVersion: sim.net.version, map: map.id },
           });
           room.sendSquadTo(ws);
+          room.sendWorldStateTo(ws);
           await room.broadcastRoster(s.tid);
         } else if (msg.t === 'host_hello') {
           if (typeof msg.hostKey !== 'string' || !safeEqual(msg.hostKey, config.hostAdminKey)) {
@@ -314,6 +326,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
           room.bindHost(ws);
           clearTimeout(helloTimeout);
           send(ws, { t: 'welcome', kind: 'host', roomId: room.roomId, overview: await room.overview() });
+          room.sendWorldStateTo(ws);
         }
       } catch (e) {
         const err = e instanceof ApiError ? e : new ApiError(500, 'INTERNAL', 'Internal error');

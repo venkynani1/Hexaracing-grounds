@@ -21,6 +21,7 @@ import {
   type MapJson,
   type RoadNetwork,
   type StartLocationDef,
+  type StationDef,
 } from '@redline/shared';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -45,7 +46,13 @@ interface RawFeature {
   lat: number;
   lon: number;
 }
-const raw = JSON.parse(readFileSync(RAW, 'utf8')) as { ways: RawWay[]; signals: [number, number][]; features: RawFeature[]; source: string };
+const raw = JSON.parse(readFileSync(RAW, 'utf8')) as {
+  ways: RawWay[];
+  signals: [number, number][];
+  features: RawFeature[];
+  source: string;
+  fuel: { osm: string; lat: number; lon: number }[];
+};
 
 /* ---------- Verified reference features (exact OSM elements, chosen by inspection of the extract) ---------- */
 const DEST_OSM = 'n6572344272'; // "Hexaware Technologies", office=it, SIPCOT IT Park Siruseri
@@ -452,6 +459,81 @@ function legCache(net: RoadNetwork, a: number, b: number) {
 }
 const STOPS_BY_NAME = new Map<string, number>();
 
+/**
+ * Service stations: real OSM amenity=fuel LOCATIONS near the courses (no brand names). Every course gets one
+ * station in each service-window band of its route (≈ 25–55 % and 60–90 % of reference time).
+ */
+function placeStations(net: RoadNetwork, courses: Record<string, CourseDef>, scale: number): StationDef[] {
+  const fuel = raw.fuel.map((f) => ({ ...f, x: (f.lon - LON0) * DEG * R * Math.cos(LAT0 * DEG) * scale, z: (f.lat - LAT0) * DEG * R * scale }));
+  const chosen = new Map<string, StationDef>();
+  const bands: [number, number, number][] = [
+    [0.25, 0.55, 0.4],
+    [0.6, 0.9, 0.75],
+  ];
+  for (const c of Object.values(courses)) {
+    const pts = coursePolyline(net, c.des, 10);
+    const total = pts[pts.length - 1]!.d;
+    for (const [lo, hi, mid] of bands) {
+      let best: { f: (typeof fuel)[number]; p: (typeof pts)[number]; score: number; d: number } | null = null;
+      for (const limit of [120, 300, 600]) {
+        for (const f of fuel) {
+          for (const p of pts) {
+            const frac = p.d / total;
+            if (frac < lo || frac > hi) continue;
+            const d = Math.hypot(p.x - f.x, p.z - f.z);
+            if (d > limit * scale) continue;
+            const score = d + Math.abs(frac - mid) * 400;
+            if (!best || score < best.score) best = { f, p, score, d };
+          }
+        }
+        if (best) break;
+      }
+      if (!best) {
+        // No mapped fuel station within 600 m: a clearly-labelled game facility at the band midpoint (never
+        // presented as a real station).
+        const p = pts.find((q) => q.d / total >= mid) ?? pts[pts.length - 1]!;
+        best = { f: { osm: `game-facility-${c.start}-${mid}`, lat: 0, lon: 0, x: p.x, z: p.z }, p, score: 0, d: -1 };
+        console.log(`[mapbuild] ${c.start}: no OSM fuel station within 600 m in band ${lo}-${hi} → game facility`);
+      }
+      if (chosen.has(best.f.osm)) continue;
+      const de = c.des[best.p.k]!;
+      const e = net.edges[de >> 1]!;
+      const h = deHeading(net, de);
+      const fx = Math.sin(h);
+      const fz = Math.cos(h);
+      // Pad on the LEFT of travel (keep-left: drivers pull in on their own side), 14 m beyond the road edge.
+      const off = e.halfWidth + 14;
+      const px = best.p.x - fz * off;
+      const pz = best.p.z + fx * off;
+      const a = net.nodes[de & 1 ? e.b : e.a]!;
+      const s0 = Math.hypot(best.p.x - a.x, best.p.z - a.z);
+      const exitS = Math.min(e.length - 1, s0 + 25);
+      const ex = lanePoint(net, de, 0, exitS);
+      const roadName = e.name ?? 'corridor';
+      chosen.set(best.f.osm, {
+        id: `st-${best.f.osm}`,
+        name: best.d >= 0 ? `Redline Service — ${roadName}` : `Redline Service (game facility) — ${roadName}`,
+        osm: best.f.osm,
+        ...(best.d >= 0 ? { osmDistanceM: Math.round(best.d / scale) } : {}),
+        x: +px.toFixed(1),
+        z: +pz.toFixed(1),
+        heading: +h.toFixed(4),
+        radius: 14,
+        bays: [-12, -4, 4, 12].map((d) => ({ x: +(px + fx * d - fz * 2).toFixed(1), z: +(pz + fz * d + fx * 2).toFixed(1), heading: +h.toFixed(4) })),
+        exit: { x: +ex.x.toFixed(1), z: +ex.z.toFixed(1), heading: +h.toFixed(4) },
+      });
+    }
+  }
+  // De-duplicate names.
+  const seen = new Map<string, number>();
+  for (const st of chosen.values()) {
+    const n = (seen.get(st.name) ?? 0) + 1;
+    seen.set(st.name, n);
+    if (n > 1) st.name = `${st.name} #${n}`;
+  }
+  return [...chosen.values()];
+}
+
 function main() {
   const T = BALANCE.courseTargetS;
   // Pass 1 at real scale: natural route times → choose the uniform scale (longest natural route = target).
@@ -486,7 +568,9 @@ function main() {
     ],
     courses: r.courses,
     maxSquadsPerStart: 6,
+    stations: placeStations(r.net, r.courses, scale),
   };
+  console.log(`[mapbuild] ${out.stations.length} service stations: ${out.stations.filter((s) => s.osmDistanceM !== undefined).length} at real OSM fuel-station locations, ${out.stations.filter((s) => s.osmDistanceM === undefined).length} disclosed game facility`);
   writeFileSync(OUT, JSON.stringify(out));
   const kb = Math.round(JSON.stringify(out).length / 1024);
   console.log(`[mapbuild] wrote ${path.relative(ROOT, OUT)} (${kb} KB): ${r.net.nodes.length} nodes, ${r.net.edges.length} edges, scale ${scale.toFixed(3)}`);

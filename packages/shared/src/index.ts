@@ -9,3 +9,4 @@ export * from './sim';
 export * from './net';
 export * from './squad';
 export * from './map';
+export * from './director';

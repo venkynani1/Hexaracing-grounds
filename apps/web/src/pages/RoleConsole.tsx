@@ -8,6 +8,8 @@ import {
   type PowerUpKind,
   type ScoringCategory,
   type SquadView,
+  type WorldState,
+  type PitView,
 } from '@redline/shared';
 import { api, HttpError, type SubmitResult } from '../lib/api';
 
@@ -22,7 +24,7 @@ const CATEGORY_LABEL: Record<ScoringCategory, string> = {
 };
 
 /** Engineer / Deceiver / Captain console. Everything shown comes from this player's role-filtered server view. */
-export function RoleConsole({ view, token, elapsedMs }: { view: SquadView; token: string; elapsedMs: number }) {
+export function RoleConsole({ view, token, elapsedMs, world }: { view: SquadView; token: string; elapsedMs: number; world: WorldState | null }) {
   const open = view.challenges.filter((c) => c.status === 'open');
   const upcoming = view.challenges.filter((c) => c.status === 'upcoming');
   const done = view.challenges.filter((c) => c.status === 'closed');
@@ -32,6 +34,7 @@ export function RoleConsole({ view, token, elapsedMs }: { view: SquadView; token
         <div>
           <div className="eyebrow">{ROLE_LABEL[view.role]} console</div>
           <div className="score-total" data-testid="squad-score">{view.score.total} pts</div>
+          <div className="hint" data-testid="credits">Garage credits: <b>{view.credits}</b></div>
         </div>
         <div className="cat-grid">
           {(Object.keys(CATEGORY_LABEL) as ScoringCategory[]).map((c) => (
@@ -48,6 +51,19 @@ export function RoleConsole({ view, token, elapsedMs }: { view: SquadView; token
           ))}
         </div>
       )}
+      {world?.announcement && elapsedMs - world.announcement.atMs < 60_000 && (
+        <div className="announce-card" data-testid="announcement">
+          <b>Director:</b> {world.announcement.text}
+        </div>
+      )}
+      {world && (world.rain || world.closures.length > 0 || world.fuelPriceMul !== 1) && (
+        <div className="hint world-line" data-testid="world-status">
+          {world.rain && '🌧 Rain: grip −20% · '}
+          {world.closures.map((c) => `⛔ Closed: ${c.label} · `)}
+          {world.fuelPriceMul !== 1 && `⛽ Fuel ×${world.fuelPriceMul}`}
+        </div>
+      )}
+      {view.pit && view.pit.stage !== 'done' && <PitCard pit={view.pit} role={view.role} token={token} />}
       {view.role === 'CAPTAIN' && <CaptainPanel view={view} token={token} />}
       {open.length === 0 && <p className="hint">No challenge is open right now. Next: {upcoming[0] ? `${upcoming[0].title} at ${formatClock(upcoming[0].opensAt)}` : '—'}</p>}
       {open.map((c) => (
@@ -258,6 +274,94 @@ function Bluff({ c, token }: { c: ChallengeView; token: string }) {
       )}
       {msg && <div className="hint">{msg}</div>}
     </div>
+  );
+}
+
+/** Steps 2–5 of the pit stop, by role. */
+function PitCard({ pit, role, token }: { pit: PitView; role: SquadView['role']; token: string }) {
+  const { msg, busy, run } = useSubmit();
+  const [fuel, setFuel] = useState(pit.plan?.fuelPct ?? 30);
+  const [repair, setRepair] = useState(pit.plan?.repair ?? false);
+  const [tyres, setTyres] = useState(pit.plan?.tyres ?? false);
+  const inBay = pit.stage === 'in_bay';
+  const est = Math.round(fuel * pit.prices.fuelPerPct + (tyres ? pit.prices.tyres : 0));
+  return (
+    <section className="challenge open" data-testid="pit-card">
+      <header>
+        <b>Pit stop — {pit.stationName}</b>
+        {pit.dwellLeftMs != null && <span className="mono timer">{Math.ceil(pit.dwellLeftMs / 1000)}s</span>}
+      </header>
+      <p className="hint">
+        {pit.stage === 'queued' ? `Queued (position ${pit.queuePosition}). Bays are FIFO.` : pit.stage === 'servicing' ? 'Servicing… the car rejoins the road when done.' : `In bay ${pit.bay! + 1}. Max 60 s — unconfirmed stops get an automatic refuel.`}
+      </p>
+      {role === 'CAPTAIN' && inBay && (
+        <div className="pit-plan">
+          <label className="role-row">
+            Fuel +{fuel}% <input type="range" min={0} max={70} step={5} value={fuel} onChange={(e) => setFuel(Number(e.target.value))} data-testid="pit-fuel" />
+          </label>
+          <label className="role-row">
+            <span>Repair body (to 100%)</span> <input type="checkbox" checked={repair} onChange={(e) => setRepair(e.target.checked)} data-testid="pit-repair" />
+          </label>
+          <label className="role-row">
+            <span>New tyres ({pit.prices.tyres} cr)</span> <input type="checkbox" checked={tyres} onChange={(e) => setTyres(e.target.checked)} data-testid="pit-tyres" />
+          </label>
+          <div className="hint">≈ {est}+ credits (fuel {pit.prices.fuelPerPct.toFixed(1)}/%)</div>
+          <div className="opts wrap">
+            <button className="btn" disabled={busy} onClick={() => run(() => api.squad.pitPlan(token, { fuelPct: fuel, repair, tyres }))} data-testid="pit-select">
+              2 · Select services
+            </button>
+            <button className="btn primary" disabled={busy || !pit.steps.select} onClick={() => run(() => api.squad.pitConfirm(token))} data-testid="pit-confirm">
+              5 · Confirm
+            </button>
+          </div>
+        </div>
+      )}
+      {role === 'ENGINEER' && inBay && pit.diagnostics && (
+        <div>
+          <div className="eyebrow">3 · Diagnostics — which system is out of spec?</div>
+          <ul className="readings">
+            {pit.diagnostics.readings.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+          {!pit.diagnostics.chosen ? (
+            <div className="opts wrap">
+              {pit.diagnostics.options.map((o) => (
+                <button key={o} className="btn opt" disabled={busy} onClick={() => run(() => api.squad.pitDiagnose(token, o))}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="hint">Reported to Captain: {pit.diagnostics.chosen}</p>
+          )}
+        </div>
+      )}
+      {role === 'DECEIVER' && inBay && pit.reports && (
+        <div>
+          <div className="eyebrow">4 · One mechanic report is FALSE — which?</div>
+          {pit.reports.chosen === null ? (
+            <div className="opts">
+              {pit.reports.items.map((r, i) => (
+                <button key={r} className="btn opt" disabled={busy} onClick={() => run(() => api.squad.pitVerify(token, i))}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="hint">Flagged: {pit.reports.items[pit.reports.chosen]}</p>
+          )}
+        </div>
+      )}
+      <div className="pit-steps">
+        {(['enter', 'select', 'diagnose', 'verify', 'confirm', 'release'] as const).map((k, i) => (
+          <span key={k} className={pit.steps[k] ? 'done' : ''}>
+            {i + 1}. {k}
+          </span>
+        ))}
+      </div>
+      {msg && <div className="hint">{msg}</div>}
+    </section>
   );
 }
 

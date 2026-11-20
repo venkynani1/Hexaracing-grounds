@@ -11,6 +11,7 @@ import {
   type Db,
 } from '@redline/db';
 import {
+  BALANCE,
   CHALLENGE_SCHEDULE,
   POWER_UPS,
   ROLES,
@@ -23,6 +24,7 @@ import {
   type ChallengeStatus,
   type ChallengeView,
   type CodingQuestionView,
+  type PitView,
   type PowerUpKind,
   type Role,
   type ScheduledChallenge,
@@ -95,7 +97,9 @@ export class SquadService {
   private readonly nav = new Map<string, NavigationVariant>();
   private readonly attempts = new Map<string, Attempt>();
   private readonly bluffs = new Map<string, BluffState>();
-  private readonly teams = new Map<string, { inventory: Record<PowerUpKind, number>; waypoint: WaypointId | null }>();
+  private readonly teams = new Map<string, { inventory: Record<PowerUpKind, number>; waypoint: WaypointId | null; credits: number }>();
+  /** Pit view provider (PitService), filtered per role. */
+  pitView: (teamId: string, role: Role) => PitView | null = () => null;
   private readonly scores = new Map<string, ScoreRow[]>();
   private readonly idem = new Map<string, unknown>();
   private readonly lastStatus = new Map<string, string>();
@@ -180,7 +184,7 @@ export class SquadService {
       }
     }
     for (const teamId of teamIds) {
-      this.teams.set(teamId, { inventory: { ...STARTING_POWER_UPS }, waypoint: null });
+      this.teams.set(teamId, { inventory: { ...STARTING_POWER_UPS }, waypoint: null, credits: BALANCE.startCredits });
       this.scores.set(teamId, []);
     }
   }
@@ -268,7 +272,28 @@ export class SquadService {
 
   /* ---------------- scoring + rewards ---------------- */
 
-  private async award(teamId: string, category: ScoringCategory, points: number, reason: string, sourceType: string, sourceId: string) {
+  /* ---------------- garage credits ---------------- */
+
+  credits(teamId: string): number {
+    return this.teams.get(teamId)?.credits ?? 0;
+  }
+
+  /** Deduct credits (never below zero). Returns the amount actually charged. */
+  spend(teamId: string, amount: number): number {
+    const t = this.teams.get(teamId);
+    if (!t) return 0;
+    const charged = Math.max(0, Math.min(t.credits, Math.round(amount)));
+    t.credits -= charged;
+    return charged;
+  }
+
+  /** Director: the same power-up for every squad (Classified Envelope). */
+  grantAll(kind: PowerUpKind) {
+    for (const t of this.teams.values()) t.inventory[kind]++;
+    this.onTeamChanged(null);
+  }
+
+  async award(teamId: string, category: ScoringCategory, points: number, reason: string, sourceType: string, sourceId: string) {
     if (points <= 0) return;
     const rows = await this.db
       .insert(scoringEvents)
@@ -589,7 +614,7 @@ export class SquadService {
         });
       }
     }
-    const t = this.teams.get(teamId) ?? { inventory: { ...STARTING_POWER_UPS }, waypoint: null };
+    const t = this.teams.get(teamId) ?? { inventory: { ...STARTING_POWER_UPS }, waypoint: null, credits: BALANCE.startCredits };
     return {
       teamId,
       role,
@@ -600,6 +625,8 @@ export class SquadService {
       waypoints: this.sim.map.waypoints.map((w) => ({ id: w.id, label: w.label })),
       buffs: this.sim.activeBuffs(teamId),
       score: this.scoreOf(teamId),
+      credits: t.credits,
+      pit: this.pitView(teamId, role),
     };
   }
 }

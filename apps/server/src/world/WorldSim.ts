@@ -13,6 +13,8 @@ import {
   deStart,
   deStop,
   testMap,
+  stationExclusions,
+  type Closure,
   type WorldMap,
   type CourseDef,
   initialVehicleState,
@@ -84,6 +86,8 @@ export interface SimCar {
   nextCp: number;
   /** Active buffs: kind → simMs expiry. Effects are applied in the shared model (client predicts them too). */
   buffs: Map<BuffKind, number>;
+  /** Held by the server (pit bay / queue, roadside recovery): no driving; inputs are still acknowledged. */
+  held: { x: number; z: number; heading: number; reason: 'pit' | 'recovery'; until?: number } | null;
 }
 
 export interface CheckpointPass {
@@ -125,6 +129,13 @@ export class WorldSim {
   readonly buildings: Building[];
   /** Checkpoint passes since the last drain (WorldRoom persists them). */
   checkpointPasses: CheckpointPass[] = [];
+  /** Cars that pulled into a station zone (PitService drains these). */
+  pitArrivals: { teamId: string; stationId: string }[] = [];
+  /** Completed roadside recoveries (PitService charges credits). */
+  recoveries: { teamId: string; tick: number }[] = [];
+  /** Active road closures and their barrier obstacles (Director). */
+  closures: Closure[] = [];
+  private barriers: Building[] = [];
   readonly traffic: TrafficSystem;
   readonly cars = new Map<string, SimCar>();
   tick = 0;
@@ -140,13 +151,14 @@ export class WorldSim {
   constructor(readonly opts: { seed: string; trafficCount?: number; map?: WorldMap }) {
     this.map = opts.map ?? testMap();
     this.net = this.map.net;
+    const ex = stationExclusions(this.map);
     if (this.map.id === 'test') {
-      this.buildings = generateBuildings(this.net, opts.seed);
-      this.buildingsNear = () => this.buildings;
+      this.buildings = generateBuildings(this.net, opts.seed, ex);
+      this.buildingsNear = () => (this.barriers.length ? [...this.buildings, ...this.barriers] : this.buildings);
     } else {
-      const pb = new ProceduralBuildings(this.net, opts.seed);
+      const pb = new ProceduralBuildings(this.net, opts.seed, ex);
       this.buildings = [];
-      this.buildingsNear = (x, z) => pb.near(x, z, 40);
+      this.buildingsNear = (x, z) => (this.barriers.length ? [...pb.near(x, z, 40), ...this.barriers] : pb.near(x, z, 40));
     }
     // Traffic lives on the course corridors of a real map (one shared traffic state for everyone).
     const courses = Object.values(this.map.courses);
@@ -202,6 +214,7 @@ export class WorldSim {
         stuckMs: 0,
         inputBudget: INPUT_BUDGET_MAX,
         buffs: new Map(),
+        held: null,
       });
     });
   }
@@ -216,6 +229,39 @@ export class WorldSim {
     car.queue.push({ seq, input });
     if (car.queue.length > MAX_QUEUE) car.queue.splice(0, car.queue.length - MAX_QUEUE);
     return true;
+  }
+
+  /* ---------- holds (pit / recovery), stations, closures ---------- */
+
+  hold(teamId: string, at: { x: number; z: number; heading: number }, reason: 'pit' | 'recovery', until?: number) {
+    const car = this.cars.get(teamId);
+    if (!car) return;
+    car.held = { ...at, reason, until };
+    car.state = { ...car.state, x: at.x, z: at.z, heading: at.heading, vx: 0, vz: 0 };
+  }
+
+  release(teamId: string, at?: { x: number; z: number; heading: number }) {
+    const car = this.cars.get(teamId);
+    if (!car) return;
+    car.held = null;
+    if (at) car.state = { ...car.state, x: at.x, z: at.z, heading: at.heading, vx: 0, vz: 0 };
+    car.stuckMs = 0;
+  }
+
+  /** Station whose zone contains the point (cars there are non-collidable so nobody can block service). */
+  stationAt(x: number, z: number, pad = 0) {
+    for (const st of this.map.stations) if (Math.hypot(st.x - x, st.z - z) <= st.radius + pad) return st;
+    return null;
+  }
+
+  setClosures(closures: Closure[]) {
+    this.closures = closures;
+    this.barriers = closures.flatMap((c) => c.barriers.map((b) => ({ x: b.x, z: b.z, w: b.width, d: 1.2, h: 1.1, tone: 0, rot: b.heading })));
+    this.traffic.blockedEdges = new Set(closures.flatMap((c) => c.edges));
+  }
+
+  get barrierObstacles() {
+    return this.barriers;
   }
 
   isGhost(c: SimCar) {
@@ -272,6 +318,23 @@ export class WorldSim {
     this.contacts = [];
     for (const car of this.cars.values()) {
       car.inputBudget = Math.min(INPUT_BUDGET_MAX, car.inputBudget + 1);
+      if (car.held) {
+        // Held cars don't drive; their inputs are acknowledged (client knows via `hd`) so prediction stays exact.
+        while (car.queue.length) {
+          const e = car.queue.shift()!;
+          car.ackSeq = e.seq;
+          car.lastInput = e.input;
+        }
+        car.ticksSinceInput = 0;
+        car.state = { ...car.state, x: car.held.x, z: car.held.z, heading: car.held.heading, vx: 0, vz: 0 };
+        car.braking = false;
+        if (car.held.reason === 'recovery' && car.held.until !== undefined && this.simMs >= car.held.until) {
+          car.state = { ...car.state, fuel: car.state.fuel + BALANCE.recovery.fuelPct };
+          car.held = null;
+          this.recoveries.push({ teamId: car.teamId, tick: this.tick });
+        }
+        continue;
+      }
       // Every received input is applied exactly once, in order — this is what makes client prediction exact.
       // Empty queue (jitter): the car waits for its input. Backlog: catch up by at most 2 inputs per tick.
       const n = car.queue.length >= 3 ? MAX_STEPS_PER_TICK : car.queue.length;
@@ -295,7 +358,8 @@ export class WorldSim {
     this.resolveCarCollisions();
     const poses = this.traffic.poses();
     this.resolveTrafficCollisions(poses);
-    const obstacles = [...this.cars.values()].map((c) => c.state);
+    const obstacles: { x: number; z: number }[] = [...this.cars.values()].map((c) => c.state);
+    for (const b of this.barriers) obstacles.push(b);
     this.traffic.step(dt, this.simMs, obstacles);
     this.tick++;
   }
@@ -346,6 +410,16 @@ export class WorldSim {
     else if (v >= STUCK.speed) car.stuckMs = 0;
     if (car.stuckMs >= STUCK.autoMs) this.resetCar(car.teamId, 'auto');
     this.checkCheckpoint(car);
+    // Fuel exhaustion → disclosed roadside recovery (never elimination).
+    if (car.state.fuel <= 0 && this.released) {
+      this.hold(car.teamId, { x: car.state.x, z: car.state.z, heading: car.state.heading }, 'recovery', this.simMs + BALANCE.recovery.delayMs);
+      return;
+    }
+    // Pulling into a service station: slow, inside the zone.
+    if (Math.hypot(car.state.vx, car.state.vz) < BALANCE.pit.maxEntrySpeed) {
+      const st = this.stationAt(car.state.x, car.state.z);
+      if (st) this.pitArrivals.push({ teamId: car.teamId, stationId: st.id });
+    }
   }
 
   /** Checkpoints must be passed in order (gate radius 25 m). Passes are queued for persistence. */
@@ -367,6 +441,8 @@ export class WorldSim {
         const a = list[i]!;
         const b = list[j]!;
         if (this.isGhost(a) || this.isGhost(b)) continue;
+        // Cars inside a station (or held) never collide: service can't be blocked.
+        if (a.held || b.held || this.stationAt(a.state.x, a.state.z, 6) || this.stationAt(b.state.x, b.state.z, 6)) continue;
         const dx = b.state.x - a.state.x;
         const dz = b.state.z - a.state.z;
         const d = Math.hypot(dx, dz);
@@ -422,7 +498,7 @@ export class WorldSim {
   /** Squad car vs traffic: traffic is kinematic (it yields via its own logic); the car bounces. */
   private resolveTrafficCollisions(poses: { x: number; z: number; type: keyof typeof TRAFFIC_TYPES; heading: number; speed: number }[]) {
     for (const car of this.cars.values()) {
-      if (this.isGhost(car)) continue;
+      if (this.isGhost(car) || car.held) continue;
       for (const p of poses) {
         const r = TRAFFIC_TYPES[p.type].length / 2;
         const dx = car.state.x - p.x;

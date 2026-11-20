@@ -42,6 +42,7 @@ class Handler(osmium.SimpleHandler):
         self.ways = []
         self.signals = []
         self.features = []
+        self.fuel = []
 
     def node(self, n):
         if not n.location.valid() or not inside(n.location.lat, n.location.lon):
@@ -49,6 +50,8 @@ class Handler(osmium.SimpleHandler):
         tags = n.tags
         if tags.get('highway') == 'traffic_signals':
             self.signals.append([round(n.location.lat, 7), round(n.location.lon, 7)])
+        if tags.get('amenity') == 'fuel':
+            self.fuel.append({'osm': f'n{n.id}', 'lat': round(n.location.lat, 7), 'lon': round(n.location.lon, 7)})
         self._feature('n', n.id, tags, n.location.lat, n.location.lon)
 
     def way(self, w):
@@ -79,6 +82,8 @@ class Handler(osmium.SimpleHandler):
             lon = sum(c[1] for c in coords) / len(coords)
             if inside(lat, lon):
                 self._feature('w', w.id, tags, lat, lon)
+                if tags.get('amenity') == 'fuel':
+                    self.fuel.append({'osm': f'w{w.id}', 'lat': round(lat, 7), 'lon': round(lon, 7)})
 
     def _feature(self, kind, oid, tags, lat, lon):
         name = tags.get('name:en') or tags.get('name')
@@ -101,10 +106,12 @@ def main():
         'ways': h.ways,
         'signals': h.signals,
         'features': h.features,
+        # Fuel station LOCATIONS only (no brand names are used in the game).
+        'fuel': h.fuel,
     }
     with open(out, 'w') as f:
         json.dump(data, f, separators=(',', ':'))
-    print(f'ways={len(h.ways)} signals={len(h.signals)} features={len(h.features)}')
+    print(f'ways={len(h.ways)} signals={len(h.signals)} features={len(h.features)} fuel={len(h.fuel)}')
 
 
 if __name__ == '__main__':

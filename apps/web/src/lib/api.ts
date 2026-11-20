@@ -44,6 +44,11 @@ export const api = {
     waypoint: (token: string, waypoint: string | null) => req<{ waypoint: string | null }>('POST', '/api/squad/waypoint', { waypoint }, bearer(token)),
     powerUp: (token: string, kind: string) => req<{ inventory: Record<string, number> }>('POST', '/api/squad/powerup', { kind }, bearer(token)),
     bluffEntry: (token: string, id: string, text: string) => req<{ ok: true }>('POST', `/api/squad/bluff/${id}/entry`, { text }, bearer(token)),
+    pitPlan: (token: string, plan: { fuelPct: number; repair: boolean; tyres: boolean }) =>
+      req<{ cost: number }>('POST', '/api/squad/pit/plan', plan, bearer(token)),
+    pitDiagnose: (token: string, answer: string) => req<{ submitted: true }>('POST', '/api/squad/pit/diagnose', { answer }, bearer(token)),
+    pitVerify: (token: string, index: number) => req<{ submitted: true }>('POST', '/api/squad/pit/verify', { index }, bearer(token)),
+    pitConfirm: (token: string) => req<{ serviceEndsInMs: number }>('POST', '/api/squad/pit/confirm', {}, bearer(token)),
     bluffVote: (token: string, id: string, choiceId: string) => req<{ ok: true }>('POST', `/api/squad/bluff/${id}/vote`, { choiceId }, bearer(token)),
   },
   host: {

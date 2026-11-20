@@ -186,6 +186,26 @@ test('M4: four browser contexts, every role UI active at once during one challen
   await captain.screenshot({ path: 'test-results/m4-captain.png', fullPage: true });
 });
 
+test('M6: Monsoon Protocol reaches every phone and the host in the same update', async ({ request, browser }) => {
+  const { captain, racer, engineer, deceiver } = squadPages;
+  const host = await (await browser.newContext()).newPage();
+  await host.goto('/host');
+  await host.getByTestId('host-key').fill(HOST_KEY);
+  await host.getByTestId('host-login').click();
+  await expect(host.getByTestId('host-world')).toBeVisible();
+  await expect(host.getByTestId('host-weather')).toHaveText('Dry');
+  expect((await request.post(`${SERVER_URL}/api/host/warp`, { headers: { 'x-host-key': HOST_KEY }, data: { toElapsedMs: 37 * 60_000 + 2000 } })).ok()).toBe(true);
+  await expect(racer.getByTestId('announcement')).toContainText('MONSOON PROTOCOL');
+  for (const p of [captain, engineer, deceiver]) {
+    await expect(p.getByTestId('announcement')).toContainText('MONSOON PROTOCOL');
+    await expect(p.getByTestId('world-status')).toContainText('Rain');
+    await expect(p.getByTestId('credits')).toContainText(/\d+/);
+  }
+  await expect(host.getByTestId('host-weather')).toHaveText('Rain (grip −20%)');
+  await expect(host.getByTestId('host-world')).toContainText('MONSOON_PROTOCOL — rain:on');
+  await racer.screenshot({ path: 'test-results/m6-racer-rain.png' });
+});
+
 test('registration is closed for new squads after START', async ({ browser }) => {
   const p = await newPage(browser);
   await p.goto('/');

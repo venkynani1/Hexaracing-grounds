@@ -1,4 +1,5 @@
 import {
+  ParticleSystem,
   Color3,
   Color4,
   DirectionalLight,
@@ -35,6 +36,8 @@ import {
   type RoadNetwork,
   type SignalColor,
   type WorldMap,
+  type Closure,
+  stationExclusions,
 } from '@redline/shared';
 
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
@@ -128,7 +131,7 @@ export class GameScene {
   ) {
     const net = map.net;
     this.net = net;
-    this.buildings = map.id === 'test' ? generateBuildings(net, seed) : [];
+    this.buildings = map.id === 'test' ? generateBuildings(net, seed, stationExclusions(map)) : [];
     this.quality = quality;
     this.engine = new Engine(canvas, PRESETS[quality].aa, { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' }, false);
     this.scale = Math.max(PRESETS[quality].minScale, 1 / Math.min(window.devicePixelRatio || 1, 1.5));
@@ -153,9 +156,11 @@ export class GameScene {
     this.camera.fov = 1.0;
     this.camera.inputs.clear();
 
-    this.procedural = map.id === 'test' ? null : new ProceduralBuildings(net, seed);
+    this.procedural = map.id === 'test' ? null : new ProceduralBuildings(net, seed, stationExclusions(map));
     this.buildGround();
     this.buildTrafficTemplates();
+    this.buildStations(map);
+    this.buildRain();
   }
 
   /* ---------------- static world: streamed cells ---------------- */
@@ -361,6 +366,85 @@ export class GameScene {
     return { meshes, signals };
   }
 
+  /** Shared service stations: forecourt pad, canopy on pillars, bay markings (original, simple geometry). */
+  private buildStations(map: WorldMap) {
+    const pad = this.mat('stPad', new Color3(0.42, 0.43, 0.46), 0.1);
+    const canopy = this.mat('stCanopy', new Color3(0.9, 0.2, 0.18), 0.2, new Color3(0.25, 0.04, 0.03));
+    const pillar = this.mat('stPillar', new Color3(0.85, 0.85, 0.85));
+    for (const st of map.stations) {
+      const p = MeshBuilder.CreateBox(`st-pad-${st.id}`, { width: 16, depth: 34, height: 0.12 }, this.scene);
+      p.position.set(st.x, 0.06, st.z);
+      p.rotation.y = st.heading;
+      p.material = pad;
+      const c = MeshBuilder.CreateBox(`st-can-${st.id}`, { width: 12, depth: 28, height: 0.6 }, this.scene);
+      c.position.set(st.x, 5.2, st.z);
+      c.rotation.y = st.heading;
+      c.material = canopy;
+      for (const [dx, dz] of [[-5, -12], [5, -12], [-5, 12], [5, 12]] as const) {
+        const pl = MeshBuilder.CreateCylinder(`st-pl-${st.id}`, { height: 5, diameter: 0.4, tessellation: 8 }, this.scene);
+        const ch = Math.cos(st.heading);
+        const sh = Math.sin(st.heading);
+        pl.position.set(st.x + dx * ch + dz * sh, 2.5, st.z - dx * sh + dz * ch);
+        pl.material = pillar;
+      }
+      for (const b of st.bays) {
+        const m = MeshBuilder.CreateBox(`st-bay-${st.id}`, { width: 2.6, depth: 5.2, height: 0.02 }, this.scene);
+        m.position.set(b.x, 0.14, b.z);
+        m.rotation.y = b.heading;
+        m.material = this.paint;
+      }
+    }
+  }
+
+  private barrierMeshes: Mesh[] = [];
+  private closureKey = '';
+  /** Route Lockdown barriers (the same obstacles the server collides with). */
+  setClosures(closures: Closure[]) {
+    const key = closures.map((c) => c.id).join(',');
+    if (key === this.closureKey) return;
+    this.closureKey = key;
+    for (const m of this.barrierMeshes) m.dispose();
+    this.barrierMeshes = [];
+    const mat = this.mat('barrier', new Color3(0.95, 0.3, 0.1), 0.2, new Color3(0.4, 0.08, 0.02));
+    for (const c of closures)
+      for (const b of c.barriers) {
+        const m = MeshBuilder.CreateBox(`barrier-${c.id}`, { width: b.width, depth: 1.2, height: 1.1 }, this.scene);
+        m.position.set(b.x, 0.55, b.z);
+        m.rotation.y = b.heading;
+        m.material = mat;
+        this.barrierMeshes.push(m);
+      }
+  }
+
+  private rainPs: ParticleSystem | null = null;
+  private buildRain() {
+    const tex = new DynamicTexture('raindrop', { width: 8, height: 32 }, this.scene, false);
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    const g = ctx.createLinearGradient(0, 0, 0, 32);
+    g.addColorStop(0, 'rgba(200,220,255,0)');
+    g.addColorStop(1, 'rgba(200,220,255,0.9)');
+    ctx.fillStyle = g;
+    ctx.fillRect(3, 0, 2, 32);
+    tex.update();
+    tex.hasAlpha = true;
+    const ps = new ParticleSystem('rain', { low: 600, medium: 1200, high: 2500, ultra: 4000 }[this.quality], this.scene);
+    ps.particleTexture = tex;
+    ps.minEmitBox = new Vector3(-40, 25, -40);
+    ps.maxEmitBox = new Vector3(40, 30, 40);
+    ps.direction1 = new Vector3(-1, -30, 0);
+    ps.direction2 = new Vector3(1, -34, 0);
+    ps.minSize = 0.08;
+    ps.maxSize = 0.14;
+    ps.minScaleY = 6;
+    ps.maxScaleY = 9;
+    ps.minLifeTime = 0.8;
+    ps.maxLifeTime = 1.1;
+    ps.emitRate = { low: 500, medium: 1000, high: 2000, ultra: 3200 }[this.quality];
+    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+    ps.emitter = new Vector3(0, 0, 0);
+    this.rainPs = ps;
+  }
+
   private buildTrafficTemplates() {
     const colors = [new Color3(0.85, 0.85, 0.82), new Color3(0.15, 0.15, 0.18), new Color3(0.9, 0.55, 0.1), new Color3(0.2, 0.35, 0.6)];
     this.trafficTemplates = TRAFFIC_TYPE_BY_CODE.map((type, i) => {
@@ -443,6 +527,8 @@ export class GameScene {
   setRain(rain: boolean) {
     if (rain === this.rain) return;
     this.rain = rain;
+    if (rain) this.rainPs?.start();
+    else this.rainPs?.stop();
     this.scene.clearColor = rain ? new Color4(0.35, 0.4, 0.46, 1) : new Color4(0.55, 0.68, 0.82, 1);
     this.scene.fogColor = rain ? new Color3(0.42, 0.46, 0.52) : new Color3(0.62, 0.72, 0.84);
     this.scene.fogDensity = PRESETS[this.quality].fog * (rain ? 1.8 : 1);
@@ -462,6 +548,7 @@ export class GameScene {
 
   updateCamera(p: CarPose, speed: number, dt: number) {
     this.streamCells(p.x, p.z);
+    if (this.rainPs) this.rainPs.emitter = new Vector3(p.x, 0, p.z);
     const fx = Math.sin(p.heading);
     const fz = Math.cos(p.heading);
     let target: Vector3;

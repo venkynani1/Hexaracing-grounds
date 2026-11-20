@@ -17,6 +17,26 @@ export const BALANCE = {
   courseTargetS: 30 * 60,
   courseTolerance: 0.1,
   checkpointsPerCourse: 10,
+  /** Pit stops (SPEC Part 9). Costs in garage credits. */
+  pit: {
+    bays: 4,
+    maxDwellMs: 60_000,
+    maxEntrySpeed: 4,
+    reentryCooldownMs: 30_000,
+    fuelCostPerPct: 2,
+    repairCostPerPt: 1.5,
+    tyresCost: 120,
+    baseServiceMs: 5_000,
+    fuelMsPerPct: 60,
+    repairMs: 5_000,
+    tyresMs: 6_000,
+  },
+  /** Roadside recovery when the tank runs dry: never elimination. */
+  recovery: { delayMs: 8_000, fuelPct: 15, cost: 50 },
+  serviceWindows: [
+    { id: 'service-1', fromMs: 17 * 60_000, toMs: 24 * 60_000 },
+    { id: 'service-2', fromMs: 36 * 60_000, toMs: 41 * 60_000 },
+  ],
   /** Interest radii (DESIGN §5). M3 adds tiers and hysteresis. */
   nearRadius: 300,
   midRadius: 1200,
