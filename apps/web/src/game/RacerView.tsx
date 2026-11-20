@@ -18,10 +18,13 @@ import {
   type WorldState,
   stationExclusions,
 } from '@redline/shared';
-import { InputState, type Control } from './input';
+import { InputState } from './input';
 import { api } from '../lib/api';
 import { drawMap, type MapDot } from './minimap';
 import { GameScene, type CameraMode, type Quality } from './scene';
+import { autoQuality } from './render/autoQuality';
+import { Announce, Arrow, MiniMap, Pedals, RaceClock, Speedo, Toast, Toasts } from './hud/Hud';
+import './hud/hud.css';
 
 export type WorldFeed = Snapshot | MapMessage;
 
@@ -45,6 +48,7 @@ interface Hud {
   health: number;
   tires: number;
   nitro: number;
+  nitroOn: boolean;
   fps: number;
   scale: number;
   released: boolean;
@@ -77,7 +81,7 @@ export default function RacerView(props: RacerViewProps) {
   const gameRef = useRef<GameScene | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   const [cam, setCam] = useState<CameraMode>('chase');
-  const [quality, setQuality] = useState<Quality>(() => (localStorageGet('redline.quality') as Quality) || 'medium');
+  const [quality, setQuality] = useState<Quality>(() => (localStorageGet('redline.quality') as Quality) || autoQuality());
   const [error, setError] = useState('');
   const mapRef = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
@@ -136,6 +140,7 @@ export default function RacerView(props: RacerViewProps) {
     });
 
     let acc = 0;
+    let lastInput = input.sample(0);
     let last = performance.now();
     let hudAt = 0;
     let resAt = 0;
@@ -152,6 +157,7 @@ export default function RacerView(props: RacerViewProps) {
         while (acc >= STEP_MS) {
           acc -= STEP_MS;
           const inp = input.sample(STEP_MS / 1000);
+          lastInput = inp;
           // Only send once we have authoritative state to predict from (exactly-once input application).
           if (predictor.state) propsRef.current.send(predictor.stepMessage(inp));
         }
@@ -159,7 +165,20 @@ export default function RacerView(props: RacerViewProps) {
       const pose = predictor.renderPose(acc / STEP_MS, frameDt);
       const serverNow = Date.now() + propsRef.current.offset;
       if (pose) {
-        game.updateMe({ x: pose.x, z: pose.z, heading: pose.heading, braking: predictor.braking, ghost: lastMe?.g });
+        const st = pose.state;
+        const fwd = forwardSpeed(st);
+        const lat = st.vx * Math.cos(st.heading) - st.vz * Math.sin(st.heading);
+        game.updateMe({
+          x: pose.x,
+          z: pose.z,
+          heading: pose.heading,
+          braking: predictor.braking,
+          ghost: lastMe?.g,
+          steer: lastInput.steer,
+          speed: fwd,
+          nitro: lastInput.nitro && st.nitro > 0,
+          slip: Math.abs(lat) + (lastInput.handbrake && fwd > 5 ? 3 : 0),
+        });
         game.updateCamera(pose, Math.abs(forwardSpeed(pose.state)), frameDt);
       }
       const near = others.sample(serverNow);
@@ -204,6 +223,7 @@ export default function RacerView(props: RacerViewProps) {
           health: s.health,
           tires: s.tires,
           nitro: s.nitro,
+          nitroOn: lastInput.nitro,
           fps: Math.round(game.engine.getFps()),
           scale: game.renderScale,
           released: predictor.released,
@@ -265,110 +285,78 @@ export default function RacerView(props: RacerViewProps) {
     }
   }, [quality]);
 
-  const hold = (c: Control) => ({
-    onPointerDown: (e: React.PointerEvent) => {
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      inputRef.current.set(c, true);
-    },
-    onPointerUp: () => inputRef.current.set(c, false),
-    onPointerCancel: () => inputRef.current.set(c, false),
-    onPointerLeave: () => inputRef.current.set(c, false),
-    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-  });
-
   const clock = props.clock;
   const phase = PHASES.find((p) => p.id === clock?.phase);
   const cams: CameraMode[] = ['chase', 'hood', 'top'];
   const qualities: Quality[] = ['low', 'medium', 'high', 'ultra'];
+  const debug = typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug');
+  const ann = props.world?.announcement;
+  const elapsed = clock?.elapsedMs ?? 0;
+  const pitActive = !!props.squad?.pit?.stage?.match(/queued|in_bay|servicing/);
 
   return (
-    <div className="racer">
+    <div className="rh racer">
       <canvas ref={canvasRef} className="game-canvas" data-testid="game-canvas" touch-action="none" />
       {error && <div className="racer-error">{error}</div>}
-      <div className="hud-top">
-        <div className="hud-clock">
-          <div className="hud-phase">{clock?.status === 'LIVE' ? phase?.label : clock?.status === 'COUNTDOWN' ? 'Ignition' : clock?.status}</div>
-          <div className="hud-time">
-            {clock?.status === 'COUNTDOWN' ? Math.ceil(clock.countdownRemainingMs / 1000) : formatClock(clock?.elapsedMs ?? 0)}
-          </div>
-        </div>
-        <div className="hud-meters">
-          <Meter label="Fuel" value={hud?.fuel ?? 0} warn={20} testid="hud-fuel" />
-          <Meter label="Health" value={hud?.health ?? 0} warn={30} />
-          <Meter label="Tyres" value={hud?.tires ?? 0} warn={30} />
-          <Meter label="Nitro" value={hud?.nitro ?? 0} warn={-1} />
-        </div>
-        <div className="hud-tools">
-          <button className="chip" onClick={() => setCam(cams[(cams.indexOf(cam) + 1) % cams.length]!)} data-testid="btn-camera">
-            Cam: {cam}
-          </button>
-          <button className="chip" onClick={() => setQuality(qualities[(qualities.indexOf(quality) + 1) % qualities.length]!)}>
-            {quality}
-          </button>
-          <span className="chip mono nocap" data-testid="fps" data-fps={hud?.fps ?? 0}>
-            {hud?.fps ?? 0} fps
-          </span>
-        </div>
+      <RaceClock
+        phase={clock?.status === 'LIVE' ? phase?.label ?? '' : clock?.status === 'COUNTDOWN' ? 'Ignition' : clock?.status ?? ''}
+        time={clock?.status === 'COUNTDOWN' ? String(Math.ceil(clock.countdownRemainingMs / 1000)) : formatClock(elapsed)}
+      />
+      <div className="rh-tools">
+        <button className="rh-chip" onClick={() => setCam(cams[(cams.indexOf(cam) + 1) % cams.length]!)} data-testid="btn-camera">
+          {cam}
+        </button>
+        <button className="rh-chip" onClick={() => setQuality(qualities[(qualities.indexOf(quality) + 1) % qualities.length]!)}>
+          {quality}
+        </button>
+        <span className="rh-chip mono" data-testid="fps" data-fps={hud?.fps ?? 0}>
+          {hud?.fps ?? 0} fps
+        </span>
       </div>
-      {hud && !hud.released && clock?.status === 'LIVE' && (
-        <div className="banner">Cars release at 03:00 — City Sprint. Engines warm.</div>
-      )}
-      {clock?.status === 'PAUSED' && <div className="banner">Paused by host</div>}
-      <Announcement world={props.world} elapsedMs={clock?.elapsedMs ?? 0} />
-      {props.squad?.pit && props.squad.pit.stage !== 'done' && <PitHud pit={props.squad.pit} />}
-      {props.squad?.gate && props.squad.gate.status === 'open' && <GateHud gate={props.squad.gate} send={props.send} token={props.token} hud={hud} />}
-      {hud && !props.squad?.pit?.stage?.match(/queued|in_bay|servicing/) && hud.fuel < 35 && hud.stName && (
-        <div className="fuel-hint" data-testid="fuel-hint">
-          <span className="wp-arrow" style={{ transform: `rotate(${hud.stAngle}rad)` }}>▲</span>
-          Low fuel — {hud.stName} · {Math.round(hud.stDist)} m · pull in and stop on the forecourt
-        </div>
-      )}
-      {hud?.held && !props.squad?.pit && <div className="banner">Roadside recovery — tank empty. +15% fuel in a few seconds (50 credits).</div>}
-      {hud?.ghost && <div className="banner">Ghosted for repeated ramming — non-collidable for 5 s, clean-driving penalty logged</div>}
+      <MiniMap canvasRef={mapRef} />
+      {ann && <Announce id={`${ann.atMs}`} text={ann.text} expired={elapsed - ann.atMs > 12_000 || elapsed < ann.atMs - 1000} />}
+      <Toasts>
+        {hud && hud.cpTotal > 0 && (
+          <Toast tone="warn" testid="checkpoint-guide">
+            {hud.cpIndex < hud.cpTotal ? (
+              <>
+                <Arrow angle={hud.cpAngle ?? 0} />
+                {hud.cpIndex === hud.cpTotal - 1 ? 'Hexaware Gate' : `Checkpoint ${hud.cpIndex + 1}/${hud.cpTotal}`} · {Math.round(hud.cpDist)} m
+              </>
+            ) : (
+              <>All checkpoints cleared ✓</>
+            )}
+          </Toast>
+        )}
+        {props.squad && <RacerSquadHud squad={props.squad} hud={hud} map={props.map} />}
+        {hud && !pitActive && hud.fuel < 35 && hud.stName && (
+          <Toast tone="good" testid="fuel-hint">
+            <Arrow angle={hud.stAngle} />
+            Low fuel — {hud.stName} · {Math.round(hud.stDist)} m · stop on the forecourt
+          </Toast>
+        )}
+        {props.squad?.pit && props.squad.pit.stage !== 'done' && <PitHud pit={props.squad.pit} />}
+        {props.squad?.gate && props.squad.gate.status === 'open' && <GateHud gate={props.squad.gate} send={props.send} token={props.token} hud={hud} />}
+      </Toasts>
+      {hud && !hud.released && clock?.status === 'LIVE' && <div className="rh-center-banner">Cars release at 03:00 — City Sprint. Engines warm.</div>}
+      {clock?.status === 'PAUSED' && <div className="rh-center-banner">Paused by host</div>}
+      {hud?.held && !props.squad?.pit && <div className="rh-center-banner">Roadside recovery — tank empty. +15% fuel in a few seconds (50 credits).</div>}
+      {hud?.ghost && <div className="rh-center-banner">Ghosted for repeated ramming — non-collidable for 5 s, clean-driving penalty logged</div>}
       {hud?.canReset && (
-        <button className="btn primary reset-btn" onClick={() => props.send({ t: 'reset' })} data-testid="btn-reset">
+        <button className="btn primary rh-reset" onClick={() => props.send({ t: 'reset' })} data-testid="btn-reset">
           Safe reset to lane
         </button>
       )}
-      {props.squad && <RacerSquadHud squad={props.squad} hud={hud} map={props.map} />}
-      {hud && hud.cpTotal > 0 && (
-        <div className="cp-guide" data-testid="checkpoint-guide">
-          {hud.cpIndex < hud.cpTotal ? (
-            <>
-              <span className="wp-arrow" style={{ transform: `rotate(${hud.cpAngle ?? 0}rad)` }}>▲</span>
-              <span>
-                {hud.cpIndex === hud.cpTotal - 1 ? 'Hexaware Gate' : `Checkpoint ${hud.cpIndex + 1}/${hud.cpTotal}`} · {Math.round(hud.cpDist)} m
-              </span>
-            </>
-          ) : (
-            <span>All checkpoints cleared ✓</span>
-          )}
+      <Speedo speed={hud?.speed ?? 0} nitro={hud?.nitro ?? 0} fuel={hud?.fuel ?? 0} health={hud?.health ?? 0} tires={hud?.tires ?? 0} nitroOn={hud?.nitroOn} />
+      <Pedals input={inputRef.current} />
+      {debug && (
+        <div className="rh-debug mono">
+          {props.squadName} · traffic {hud?.traffic ?? 0} · squads near {hud?.others ?? 0} · cells {hud?.cells ?? 0} · res ×{(1 / (hud?.scale ?? 1)).toFixed(2)} · corr {(hud?.correction ?? 0).toFixed(2)} m
         </div>
       )}
-      <a className="attribution" href="/credits" target="_blank" rel="noreferrer" data-testid="osm-attribution">
-        {props.map.id === 'chennai' ? `Map data ${props.map.attribution} · Chennai at ${Math.round(props.map.scale * 100)}% scale` : 'Synthetic test map'}
+      <a className="rh-attrib" href="/credits" target="_blank" rel="noreferrer" data-testid="osm-attribution">
+        {props.map.id === 'chennai' ? `Map data ${props.map.attribution} · Chennai at ${Math.round(props.map.scale * 100)}% scale · credits` : 'Synthetic test map'}
       </a>
-      <canvas ref={mapRef} className="minimap" width={240} height={240} data-testid="minimap" aria-label="Map of all squads" />
-      <div className="hud-speed" data-testid="hud-speed" data-speed={Math.round(hud?.speed ?? 0)}>
-        <span>{Math.round(hud?.speed ?? 0)}</span>
-        <small>km/h</small>
-      </div>
-      <div className="hud-debug mono">
-        {props.squadName} · traffic {hud?.traffic ?? 0} · squads near {hud?.others ?? 0} · cells {hud?.cells ?? 0} · res ×{(1 / (hud?.scale ?? 1)).toFixed(2)} · corr{' '}
-        {(hud?.correction ?? 0).toFixed(2)} m
-      </div>
-      <div className="controls-left">
-        <button className="pad" {...hold('left')} data-testid="btn-left" aria-label="Steer left">◀</button>
-        <button className="pad" {...hold('right')} data-testid="btn-right" aria-label="Steer right">▶</button>
-      </div>
-      <div className="controls-right">
-        <div className="pad-col">
-          <button className="pad small nitro" {...hold('nitro')} aria-label="Nitro">NOS</button>
-          <button className="pad small" {...hold('handbrake')} aria-label="Handbrake">DRIFT</button>
-        </div>
-        <button className="pad brake" {...hold('brake')} data-testid="btn-brake" aria-label="Brake">BRAKE</button>
-        <button className="pad gas" {...hold('throttle')} data-testid="btn-throttle" aria-label="Throttle">GAS</button>
-      </div>
     </div>
   );
 }
@@ -396,101 +384,80 @@ function RacerSquadHud({ squad, hud, map }: { squad: SquadView; hud: Hud | null;
   const clue = squad.challenges.find((c) => c.status === 'open' && c.clue);
   const wp = squad.waypoint ? map.waypoints.find((w) => w.id === squad.waypoint) : null;
   return (
-    <div className="racer-squad">
+    <>
       {wp && hud?.wpAngle != null && (
-        <div className="wp" data-testid="racer-waypoint">
-          <span className="wp-arrow" style={{ transform: `rotate(${hud.wpAngle}rad)` }}>▲</span>
-          <span>{wp.label} · {Math.round(hud.wpDist)} m</span>
-        </div>
+        <Toast tone="info" testid="racer-waypoint">
+          <Arrow angle={hud.wpAngle} />
+          {wp.label} · {Math.round(hud.wpDist)} m
+        </Toast>
       )}
       {clue && (
-        <div className="racer-clue" data-testid="racer-clue">
-          <span className="eyebrow">{clue.title} — your clue</span>
-          <div>{clue.clue}</div>
-        </div>
+        <Toast tone="info" testid="racer-clue">
+          <span>
+            <span className="eyebrow">{clue.title} — your clue</span>
+            <div>{clue.clue}</div>
+          </span>
+        </Toast>
       )}
       {squad.buffs.map((b) => (
-        <span key={b.kind} className="chip">⚡ {b.kind.replace('_', ' ')}</span>
+        <Toast key={b.kind} tone="good">⚡ {b.kind.replace('_', ' ')}</Toast>
       ))}
-    </div>
+    </>
   );
 }
 
 /** Racer's slice of the gate: escort request, disclosed escort banner, parking-bay guidance. */
 function GateHud({ gate, token, hud }: { gate: import('@redline/shared').GateView; send: RacerViewProps['send']; token: string; hud: Hud | null }) {
   const [msg, setMsg] = useState('');
-  if (gate.escorting) return <div className="banner escort" data-testid="escort-banner">ESCORT — disclosed, time-compressed transfer along your course roads. Skipped checkpoints score 0.</div>;
+  if (gate.escorting)
+    return (
+      <Toast tone="info" testid="escort-banner">
+        ESCORT — disclosed, time-compressed transfer along your course roads. Skipped checkpoints score 0.
+      </Toast>
+    );
   return (
-    <div className="gate-hud" data-testid="gate-hud">
+    <Toast tone="gold" testid="gate-hud">
       {gate.arrival ? (
         <span>
           Park in bay {gate.parking.spot} {gate.parking.points !== null ? `✓ +${gate.parking.points}` : hud ? `· ${Math.round(hud.bayDist)} m` : ''}
         </span>
       ) : (
-        <button
-          className="btn primary"
-          onClick={() => api.squad.gateEscort(token).then(() => setMsg('Escort requested'), (e) => setMsg(e.message))}
-          data-testid="racer-escort"
-        >
+        <button className="btn primary" onClick={() => api.squad.gateEscort(token).then(() => setMsg('Escort requested'), (e) => setMsg(e.message))} data-testid="racer-escort">
           Request escort to the gate
         </button>
       )}
       {gate.myDigit.digit !== null && <span> · Access digit #1: <b>{gate.myDigit.digit}</b></span>}
       {msg && <span className="hint"> {msg}</span>}
-    </div>
-  );
-}
-
-/** Latest Director announcement, shown for 12 s of event time. */
-function Announcement({ world, elapsedMs }: { world: WorldState | null; elapsedMs: number }) {
-  const a = world?.announcement;
-  if (!a || elapsedMs - a.atMs > 12_000 || elapsedMs < a.atMs - 1000) return null;
-  return (
-    <div className="announce" data-testid="announcement">
-      {a.text}
-    </div>
+    </Toast>
   );
 }
 
 const STEP_LABEL: [keyof import('@redline/shared').PitView['steps'], string][] = [
   ['enter', 'Enter'],
-  ['select', 'Captain selects'],
-  ['diagnose', 'Engineer diagnostics'],
-  ['verify', 'Deceiver check'],
-  ['confirm', 'Captain confirms'],
-  ['release', 'Back on road'],
+  ['select', 'Captain'],
+  ['diagnose', 'Engineer'],
+  ['verify', 'Deceiver'],
+  ['confirm', 'Confirm'],
+  ['release', 'Release'],
 ];
 
 function PitHud({ pit }: { pit: import('@redline/shared').PitView }) {
   return (
-    <div className="pit-hud" data-testid="pit-hud">
-      <div className="eyebrow">{pit.stationName}</div>
-      <div>
-        {pit.stage === 'queued' ? `Queued — position ${pit.queuePosition}` : pit.stage === 'in_bay' ? `Bay ${pit.bay! + 1} — pit crew rolled you in` : 'Servicing…'}
+    <Toast tone="good" testid="pit-hud">
+      <span>
+        <span className="eyebrow">{pit.stationName}</span>
+        {pit.stage === 'queued' ? `Queued — position ${pit.queuePosition}` : pit.stage === 'in_bay' ? `Bay ${pit.bay! + 1} — crew rolled you in` : 'Servicing…'}
         {pit.dwellLeftMs != null && ` · ${Math.ceil(pit.dwellLeftMs / 1000)} s max`}
         {pit.serviceLeftMs != null && ` · ${Math.ceil(pit.serviceLeftMs / 1000)} s`}
-      </div>
-      <div className="pit-steps">
-        {STEP_LABEL.map(([k, l]) => (
-          <span key={k} className={pit.steps[k] ? 'done' : ''}>
-            {pit.steps[k] ? '✓' : '·'} {l}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Meter({ label, value, warn, testid }: { label: string; value: number; warn: number; testid?: string }) {
-  return (
-    <div className={`meter ${value <= warn ? 'warn' : ''}`} data-testid={testid} data-value={Math.round(value)}>
-      <div className="meter-l">
-        {label} <b>{Math.round(value)}</b>
-      </div>
-      <div className="meter-bar">
-        <div style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
-      </div>
-    </div>
+        <span className="pit-steps">
+          {STEP_LABEL.map(([k, l]) => (
+            <span key={k} className={pit.steps[k] ? 'done' : ''}>
+              {pit.steps[k] ? '✓' : '·'} {l}{' '}
+            </span>
+          ))}
+        </span>
+      </span>
+    </Toast>
   );
 }
 

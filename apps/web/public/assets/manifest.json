@@ -1,0 +1,95 @@
+{
+  "files": [
+    {
+      "path": "cars/car_hero.glb",
+      "kb": 2988
+    },
+    {
+      "path": "cars/car_lod1.glb",
+      "kb": 340
+    },
+    {
+      "path": "cars/car_lod2.glb",
+      "kb": 103
+    },
+    {
+      "path": "env/sky.webp",
+      "kb": 58
+    },
+    {
+      "path": "env/sky_1k.hdr",
+      "kb": 1401
+    },
+    {
+      "path": "props/barrier.glb",
+      "kb": 135
+    },
+    {
+      "path": "tex/asphalt_diff.webp",
+      "kb": 130
+    },
+    {
+      "path": "tex/asphalt_nor.webp",
+      "kb": 16
+    },
+    {
+      "path": "tex/asphalt_rough.webp",
+      "kb": 8
+    },
+    {
+      "path": "tex/concrete_diff.webp",
+      "kb": 45
+    },
+    {
+      "path": "tex/facade001_diff.webp",
+      "kb": 23
+    },
+    {
+      "path": "tex/facade006_diff.webp",
+      "kb": 21
+    },
+    {
+      "path": "tex/facade018a_diff.webp",
+      "kb": 150
+    },
+    {
+      "path": "tex/facade019a_diff.webp",
+      "kb": 163
+    },
+    {
+      "path": "tex/grass_diff.webp",
+      "kb": 45
+    },
+    {
+      "path": "tex/pavers_diff.webp",
+      "kb": 43
+    },
+    {
+      "path": "tex/pavers_nor.webp",
+      "kb": 27
+    }
+  ],
+  "totalKB": 5696,
+  "meshes": {
+    "cars/car_hero.glb": {
+      "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",
+      "trisBefore": 189011,
+      "tris": 105035
+    },
+    "cars/car_lod1.glb": {
+      "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_lod1.glb",
+      "trisBefore": 129632,
+      "tris": 20698
+    },
+    "cars/car_lod2.glb": {
+      "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_lod2.glb",
+      "trisBefore": 129632,
+      "tris": 3927
+    },
+    "props/barrier.glb": {
+      "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/props/barrier.glb",
+      "trisBefore": 60928,
+      "tris": 2394
+    }
+  }
+}

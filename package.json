@@ -2,13 +2,14 @@
   "name": "code-redline",
   "private": true,
   "version": "0.0.0",
-  "description": "CODE REDLINE: ROAD TO HEXAWARE \u2014 single-world multiplayer racing event",
+  "description": "CODE REDLINE: ROAD TO HEXAWARE — single-world multiplayer racing event",
   "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*",
     "tools/loadtest",
-    "tools/mapbuild"
+    "tools/mapbuild",
+    "tools/assets"
   ],
   "engines": {
     "node": ">=20"
@@ -25,7 +26,9 @@
     "loadtest": "npm run start -w @redline/loadtest --",
     "map:extract": "python3 tools/mapbuild/extract.py tools/mapbuild/data/raw/tamil_nadu.osm.pbf tools/mapbuild/data/raw/chennai-extract.json",
     "map:build": "npm run build -w @redline/mapbuild",
-    "test:perf": "vitest run --config vitest.perf.config.ts"
+    "test:perf": "vitest run --config vitest.perf.config.ts",
+    "assets:fetch": "npm run fetch -w @redline/assets",
+    "assets:build": "npm run build -w @redline/assets"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

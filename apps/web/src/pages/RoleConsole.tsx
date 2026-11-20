@@ -136,49 +136,136 @@ function Coding({ c, token }: { c: ChallengeView; token: string }) {
     const solved = c.questions?.filter((q) => q.solved).length ?? 0;
     return <p className="hint">Engineer progress: {solved}/{c.questions?.length ?? 0} solved.</p>;
   }
+  return <CodingStepper c={c} token={token} />;
+}
+
+type CodingQ = NonNullable<ChallengeView['questions']>[number];
+const qDone = (q: CodingQ) => q.solved || q.attempts >= q.maxAttempts;
+
+/** Engineer console: ONE question at a time, readable code, progress, server-confirmed feedback, auto-advance. */
+function CodingStepper({ c, token }: { c: ChallengeView; token: string }) {
+  const qs = c.questions!;
+  const firstOpen = Math.max(0, qs.findIndex((q) => !qDone(q)));
+  const [idx, setIdx] = useState(firstOpen);
+  const solved = qs.filter((q) => q.solved).length;
+  const pts = qs.reduce((a, q) => a + (q.solved ? q.points : 0), 0);
+  const i = Math.min(idx, qs.length - 1);
+  const advance = () => {
+    const next = qs.findIndex((q, k) => k > i && !qDone(q));
+    const any = qs.findIndex((q) => !qDone(q));
+    if (next >= 0) setIdx(next);
+    else if (any >= 0 && any !== i) setIdx(any);
+  };
   return (
-    <div className="questions">
-      {c.questions!.map((q, i) => (
-        <CodingQuestion key={q.id} q={q} index={i} token={token} />
-      ))}
+    <div className="eng" data-testid="engineer-console">
+      <div className="eng-progress" role="tablist" aria-label="Questions">
+        {qs.map((q, k) => (
+          <button
+            key={q.id}
+            role="tab"
+            aria-selected={k === i}
+            className={`eng-dot ${k === i ? 'cur' : ''} ${q.solved ? 'ok' : q.attempts >= q.maxAttempts ? 'bad' : q.attempts > 0 ? 'tried' : ''}`}
+            onClick={() => setIdx(k)}
+            data-testid={`qdot-${k + 1}`}
+          >
+            {q.solved ? '✓' : q.attempts >= q.maxAttempts ? '✕' : k + 1}
+          </button>
+        ))}
+        <span className="eng-score">
+          {solved}/{qs.length} solved · <b>+{pts}</b>
+        </span>
+      </div>
+      <CodingQuestion key={qs[i]!.id} q={qs[i]!} index={i} total={qs.length} token={token} onDone={advance} />
+      <div className="eng-nav">
+        <button className="btn ghost" disabled={i === 0} onClick={() => setIdx(i - 1)}>
+          ← Prev
+        </button>
+        <button className="btn ghost" disabled={i === qs.length - 1} onClick={() => setIdx(i + 1)}>
+          Next →
+        </button>
+      </div>
     </div>
   );
 }
 
-function CodingQuestion({ q, index, token }: { q: NonNullable<ChallengeView['questions']>[number]; index: number; token: string }) {
-  const [answer, setAnswer] = useState('');
-  const { msg, busy, run } = useSubmit();
-  const locked = q.solved || q.attempts >= q.maxAttempts;
-  const submit = (a: string) => run(() => api.squad.coding(token, q.id, a), describeResult);
+const KW = /\b(const|let|var|function|return|for|while|if|else|of|in|new|class|def|print|range|len|True|False|None|and|or|not|import|from|lambda|true|false|null|undefined|typeof|console|log|int|str|list|map|filter|reduce|push|pop|length)\b/;
+/** Minimal, safe syntax highlighting (tokens become spans — never HTML injection). */
+function Code({ code }: { code: string }) {
+  const lines = code.replace(/\t/g, '  ').split('\n');
   return (
-    <div className="question" data-testid={`question-${index + 1}`}>
-      <div className="q-prompt">
-        Q{index + 1}. {q.prompt} {q.solved && <span className="pts">✓ +{q.points}</span>}
+    <pre className="code eng-code" aria-label="Code">
+      {lines.map((ln, n) => (
+        <div key={n} className="eng-line">
+          <span className="eng-ln">{n + 1}</span>
+          <span>
+            {ln.split(/(\/\/.*$|#.*$|"[^"]*"|'[^']*'|`[^`]*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_]\w*\b)/).map((t, k) =>
+              !t ? null : /^(\/\/|#)/.test(t) ? (
+                <span key={k} className="tk-c">{t}</span>
+              ) : /^["'`]/.test(t) ? (
+                <span key={k} className="tk-s">{t}</span>
+              ) : /^\d/.test(t) ? (
+                <span key={k} className="tk-n">{t}</span>
+              ) : KW.test(t) && t.match(KW)![0] === t ? (
+                <span key={k} className="tk-k">{t}</span>
+              ) : (
+                <span key={k}>{t}</span>
+              ),
+            )}
+          </span>
+        </div>
+      ))}
+    </pre>
+  );
+}
+
+function CodingQuestion({ q, index, total, token, onDone }: { q: CodingQ; index: number; total: number; token: string; onDone: () => void }) {
+  const [answer, setAnswer] = useState('');
+  const [result, setResult] = useState<SubmitResult | null>(null);
+  const { msg, busy, run } = useSubmit();
+  const locked = qDone(q);
+  const submit = (a: string) =>
+    run(async () => {
+      const r = await api.squad.coding(token, q.id, a);
+      setResult(r);
+      if (r.correct || r.attemptsLeft <= 0) setTimeout(onDone, 1400);
+      return r;
+    }, describeResult);
+  const tone = result ? (result.correct ? 'ok' : result.attemptsLeft > 0 ? 'warn' : 'bad') : q.solved ? 'ok' : locked ? 'bad' : '';
+  return (
+    <div className={`question eng-card ${tone}`} data-testid={`question-${index + 1}`}>
+      <div className="eng-q-head">
+        <span className="eyebrow">
+          Question {index + 1} of {total}
+        </span>
+        <span className="eng-attempts">{q.solved ? `✓ +${q.points}` : `${Math.max(0, q.maxAttempts - q.attempts)} attempt(s) · ${q.points} pts`}</span>
       </div>
-      <pre className="code">{q.code}</pre>
+      <div className="q-prompt eng-prompt">{q.prompt}</div>
+      <Code code={q.code} />
       {!locked &&
         (q.options ? (
-          <div className="opts">
-            {q.options.map((o) => (
-              <button key={o} className="btn opt" disabled={busy} onClick={() => submit(o)}>
-                {o}
+          <div className="opts eng-opts">
+            {q.options.map((o, k) => (
+              <button key={o} className="btn opt eng-opt" disabled={busy} onClick={() => submit(o)}>
+                <span className="eng-key">{String.fromCharCode(65 + k)}</span> {o}
               </button>
             ))}
           </div>
         ) : (
           <form
-            className="inline"
+            className="inline eng-form"
             onSubmit={(e) => {
               e.preventDefault();
               void submit(answer);
             }}
           >
-            <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Output" autoCapitalize="off" autoComplete="off" />
-            <button className="btn primary" disabled={busy || !answer.trim()}>Submit</button>
+            <input className="mono" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Type the exact output" autoCapitalize="off" autoComplete="off" spellCheck={false} />
+            <button className="btn primary" disabled={busy || !answer.trim()}>
+              {busy ? 'Checking…' : 'Submit'}
+            </button>
           </form>
         ))}
-      <div className="hint" data-testid={`question-${index + 1}-result`}>
-        {msg || (locked && !q.solved ? 'No attempts left' : `${q.maxAttempts - q.attempts} attempt(s) left`)}
+      <div className={`hint eng-result ${tone}`} data-testid={`question-${index + 1}-result`} aria-live="polite">
+        {busy ? 'Checking with the server…' : msg || (q.solved ? `Solved ✓ +${q.points}` : locked ? 'No attempts left' : `${q.maxAttempts - q.attempts} attempt(s) left`)}
       </div>
     </div>
   );

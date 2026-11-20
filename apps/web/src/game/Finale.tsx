@@ -8,6 +8,7 @@ import {
   type WorldMap,
 } from '@redline/shared';
 import { GameScene } from './scene';
+import { autoQuality } from './render/autoQuality';
 import type { WorldFeed } from './RacerView';
 
 /**
@@ -34,7 +35,7 @@ export default function Finale(props: {
   useEffect(() => {
     let game: GameScene;
     try {
-      game = new GameScene(canvas.current!, props.map, props.seed, 'medium');
+      game = new GameScene(canvas.current!, props.map, props.seed, autoQuality());
     } catch (e) {
       setErr(`3D not available: ${(e as Error).message}`);
       return;

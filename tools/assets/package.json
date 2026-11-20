@@ -1,0 +1,19 @@
+{
+  "name": "@redline/assets",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Licensed 3D/texture asset pipeline: pinned downloads (sha256), optimisation, inventory",
+  "scripts": {
+    "fetch": "tsx src/fetch.ts",
+    "build": "tsx src/build.ts"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "4.1.1",
+    "@gltf-transform/extensions": "4.1.1",
+    "@gltf-transform/functions": "4.1.1",
+    "meshoptimizer": "0.22.0",
+    "sharp": "0.34.4",
+    "tsx": "^4.23.0"
+  }
+}

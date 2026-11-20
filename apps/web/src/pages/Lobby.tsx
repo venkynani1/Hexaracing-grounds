@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
+  formatClock,
   ROLES,
   ROLE_LABEL,
   type ClockState,
@@ -136,13 +137,24 @@ export function Lobby() {
     );
   }
 
+  // Engineer with an open coding round: the console takes the screen; squad/lobby details fold away below.
+  const engineerFocus = !!(inWorld && me?.role === 'ENGINEER' && squad?.challenges.some((c) => c.kind === 'coding' && c.status === 'open' && c.action === 'answer'));
   return (
-    <main className="page">
+    <main className={`page ${engineerFocus ? 'eng-page' : ''}`}>
       <header className="topbar">
         <Brand small />
         <span className={`conn conn-${status}`} title="Connection to the world server">{status === 'open' ? 'Connected' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</span>
       </header>
-      <section className="lobby-grid">
+      {engineerFocus && squad && session && (
+        <div className="eng-focus">
+          <div className="eng-top">
+            <span className="eyebrow">P2 · Engineer console · {roster.name}</span>
+            <span className="mono eng-clock">{live ? formatClock(live.elapsedMs) : ''}</span>
+          </div>
+          <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} world={worldState} />
+        </div>
+      )}
+      <section className={`lobby-grid ${engineerFocus ? 'collapsed' : ''}`}>
         <div className="card">
           <div className="squad-head">
             <div>
@@ -203,7 +215,7 @@ export function Lobby() {
       <footer className="footer-credits">
         <a href="/credits">Credits &amp; map data: © OpenStreetMap contributors (ODbL)</a>
       </footer>
-      {inWorld && squad && session && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} world={worldState} />}
+      {inWorld && squad && session && !engineerFocus && <RoleConsole view={squad} token={session.sessionToken} elapsedMs={live?.elapsedMs ?? 0} world={worldState} />}
     </main>
   );
 }
