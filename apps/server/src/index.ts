@@ -1,7 +1,8 @@
-import { connectPglite, connectPostgres } from '@redline/db';
+import { connectPglite, connectPostgres, loadLocalEnv } from '@redline/db';
 import { buildServer } from './app';
 import { loadConfig } from './config';
 
+loadLocalEnv(); // dev: DATABASE_URL from .env.local (neon env pull); production uses Fly secrets
 const config = loadConfig();
 const db = config.databaseUrl
   ? await connectPostgres(config.databaseUrl, { migrate: true, migrationUrl: process.env.DATABASE_URL_UNPOOLED || undefined })

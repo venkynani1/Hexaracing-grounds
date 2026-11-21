@@ -1,5 +1,8 @@
 import { connectPostgres } from './client';
 import { seedCatalogue } from './seed';
+import { loadLocalEnv } from './env';
+
+loadLocalEnv();
 
 const url = process.env.DATABASE_URL;
 if (!url) {
