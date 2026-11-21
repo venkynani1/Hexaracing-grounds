@@ -63,6 +63,8 @@ npm run assets:fetch # download licensed 3D/texture sources (sha256-pinned, tool
 npm run assets:build # optimise → apps/web/public/assets + regenerate docs/ASSETS.md
 # /test-drive?auto=1&bench=60  offline visual checkpoint + on-device benchmark (never touches the event)
 # /slice?accept=15[&auto=1][&q=low|medium|high]  vertical slice + on-device PERFORMANCE GATE (docs/ACCEPTANCE.md)
+# /benchmark   offline Android benchmark launcher (scene × quality × duration) → same gate + JSON export
+# Deploy: Vercel project `code-redline` (root apps/web) → https://code-redline.vercel.app (docs/RUNBOOK.md)
 # cd tools/loadtest && npx tsx src/rehearsal.ts --url <server> --host-key <key> --minutes 62   # real-time 60-min rehearsal, 120 clients
 ```
 

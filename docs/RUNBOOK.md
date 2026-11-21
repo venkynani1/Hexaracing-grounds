@@ -22,7 +22,15 @@ Server settings: `PORT`, `PUBLIC_WEB_ORIGIN` (the Vercel URL; comma-separate if 
 ## 3. Deploy
 1. Database: create a Neon project/branch; `DATABASE_URL=… npm run db:migrate` (the server also migrates on boot).
 2. Server (Fly example): `cp apps/server/fly.toml.example fly.toml`, `fly launch --no-deploy`, `fly secrets set DATABASE_URL=… SESSION_SECRET=… HOST_ADMIN_KEY=… EVENT_SEED=…`, `fly deploy`. Check `https://<server>/api/health` → `{ ok: true, db: true }`. Boot log shows `prewarmed … corridor cells` and `JIT warm-up`.
-3. Web: Vercel project rooted at `apps/web` (build `npm run build -w @redline/web`, output `apps/web/dist`), env `VITE_SERVER_URL=https://<server>`, `VITE_WS_URL=wss://<server>`.
+3. Web: Vercel project **`code-redline`** (team "Venkatesh's projects"), Git-connected to
+   `venkynani1/Hexaracing-grounds`, Root Directory `apps/web`, framework Vite, build `vite build`, output `dist`,
+   Node 22, "include source files outside the root directory" ON (the npm workspace `@redline/shared` lives in
+   `packages/`). Production URL: https://code-redline.vercel.app. Settings are also pinned in `apps/web/vercel.json`.
+   Env (public, build-time — set only once the server is deployed): `VITE_SERVER_URL=https://<server>`,
+   `VITE_WS_URL=wss://<server>`. **Never** put `DATABASE_URL` / `SESSION_SECRET` / `HOST_ADMIN_KEY` in the Vercel
+   project: every `VITE_*` value is compiled into the browser bundle; secrets belong to the game server only.
+   Without `VITE_SERVER_URL` the home page shows a "server not connected" notice; `/benchmark`, `/test-drive`,
+   `/slice` and `/credits` are fully offline and work without any server.
 4. Smoke: open `/host` (host key), `/projector`, and join a test squad from a phone.
 
 > Status: the Dockerfile and Fly config are provided but were **not built/deployed from this environment** (no

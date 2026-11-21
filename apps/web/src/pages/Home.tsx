@@ -56,6 +56,13 @@ export function Home({ initialCode }: { initialCode: string }) {
   return (
     <main className="page narrow">
       <Brand />
+      {import.meta.env.PROD && !import.meta.env.VITE_SERVER_URL && (
+        <div className="card notice" data-testid="no-server-notice">
+          <strong>Live multiplayer server is not connected to this deployment.</strong> Squads, lobby and the live race
+          need the game server (VITE_SERVER_URL). For the 3D driving experience on this device, use the{' '}
+          <a href="/benchmark">offline benchmark</a> or the <a href="/test-drive">offline test drive</a>.
+        </div>
+      )}
       {existing && (
         <button className="btn ghost wide" onClick={() => navigate('/lobby')} data-testid="resume-session">
           Return to my squad lobby

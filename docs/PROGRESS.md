@@ -2,6 +2,25 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-21 — Vercel deployment + Android benchmark route
+
+### What runs
+- https://code-redline.vercel.app (Vercel project `code-redline`, production, from branch `ccr-7f7a66bb-6yv4fm`).
+- `/benchmark` — offline launcher: car+road / +vegetation / full dry / full rain × Low/Medium/High × auto 15-min,
+  quick 3-min, manual 15-min, free drive; live FPS + frame time (avg/worst of 120 frames); PASS/FAIL report with
+  Copy / Download JSON (includes the run config). Real slice renderer + real assets.
+- Home shows a "live multiplayer server not connected" notice in production builds without `VITE_SERVER_URL`.
+
+### Tested
+- Local production build (vite preview) and the live Vercel URL, Android-emulated Chrome (Pixel 7 landscape,
+  touch, SwiftShader): all 36 GLB/KTX2/HDR/wasm requests 200, no console errors, touch GAS drives, minimap
+  draws, renders again after reload, `/test-drive` offline works, 3-min benchmark produced its report + JSON.
+- e2e 9/9 (new benchmark launcher → run test), typecheck clean.
+
+### Not done — needs the owner
+- Game server (Fly.io/Railway/Render/VM) + Neon not deployed → live multiplayer NOT available on Vercel.
+- Real Android phone runs of `/benchmark` (the 30 FPS gate).
+
 ## 2026-11-21 — Performance & realism blocker (slice)
 
 ### What runs
