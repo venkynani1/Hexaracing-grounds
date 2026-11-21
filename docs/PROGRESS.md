@@ -2,6 +2,16 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-21 — Production backend on Neon PostgreSQL
+
+- Fly `code-redline-server` now uses Neon (secret `DATABASE_URL`, pooled, TLS); `ALLOW_EMBEDDED_DB`/`PGLITE_DIR` removed.
+  By the owner's choice the database is the Neon branch named `validation` (project little-wind-58361092, ap-southeast-1),
+  which also holds one earlier validation event (2 bot squads, separate event — not part of the live event).
+- Verified on Neon from Fly: db:verify 24 tables / 194 columns / 64 constraints / 48 indexes; 4-role squads + START;
+  connection drop survived; restart restored the event (LIVE → PAUSED). Production event: clean, REGISTRATION_OPEN.
+- Rollback: volume `redline_data` + snapshot `vs_gkq5yoo0MRRYT1BMnGPo3` (embedded test DB, 0 squads).
+- Open: Vercel serves 402 "deployment temporarily paused" (account/billing); Fly trial 5-min stop unless a card is added.
+
 ## 2026-11-21 — Game server deployed on Fly.io (test mode, embedded DB)
 
 - Server: `ALLOW_EMBEDDED_DB=true` opt-in lets a production build run on PGlite (`PGLITE_DIR` on a volume) for
