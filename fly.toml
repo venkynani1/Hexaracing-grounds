@@ -1,4 +1,4 @@
-# CODE REDLINE game server on Fly.io — TEST deployment (embedded PGlite on a volume, no Neon yet).
+# CODE REDLINE game server on Fly.io — production on Neon PostgreSQL (DATABASE_URL = Neon pooled URL, a Fly secret).
 # One machine, always on: the world lives in ONE process — never scale to more than 1 machine.
 # Deploy from the repo root (docs/RUNBOOK.md "Fly.io test deployment"):
 #   fly apps create code-redline-server
@@ -17,9 +17,8 @@ primary_region = "sin"   # Singapore — closest Fly region to Chennai offered f
   MAP = "chennai"
   TRUST_PROXY = "true"
   PUBLIC_WEB_ORIGIN = "https://code-redline.vercel.app"
-  ALLOW_EMBEDDED_DB = "true"      # test only: squads/scores live on the volume below, not in Neon
-  PGLITE_DIR = "/data/pglite"
 
+# The volume holds the pre-Neon embedded test database (rollback only; snapshot vs_gkq5yoo0MRRYT1BMnGPo3).
 [mounts]
   source = "redline_data"
   destination = "/data"
