@@ -94,3 +94,13 @@ Then point the web app at it (Vercel project `code-redline`, Production env) and
   `DATABASE_URL` otherwise). Data survives restarts on the `redline_data` volume, not a volume loss.
 - For the event: `fly secrets set DATABASE_URL=<Neon pooled URL>`, remove `ALLOW_EMBEDDED_DB`, size `performance-2x`.
 - Never more than one machine (`--ha=false`, no `fly scale count 2`): ONE WORLD lives in one process.
+
+## GitHub Codespaces host (zero-cost; replaces Fly.io) — prepared, not yet load-tested
+`.devcontainer/` installs the server and starts ONE process on port 2567 (`start-server.sh`, log `/tmp/redline-server.log`).
+1. GitHub → Settings → Codespaces → Secrets: `DATABASE_URL` (Neon pooled), `SESSION_SECRET` (≥ 32 chars),
+   `HOST_ADMIN_KEY` (≥ 12 chars); repository access: `venkynani1/Hexaracing-grounds`. Idle timeout: 240 min.
+2. Create: https://codespaces.new/venkynani1/Hexaracing-grounds/tree/ccr-7f7a66bb-6yv4fm (region Southeast Asia, 2-core).
+3. Ports tab → 2567 → Port visibility → Public. URL: `https://<codespace>-2567.app.github.dev`.
+4. Vercel `VITE_SERVER_URL` / `VITE_WS_URL` → that URL (`wss://` for WS) → redeploy.
+Limits: free 120 core-hours/month (≈ 60 h on 2-core); stops after the idle timeout without user activity — keep the
+codespace tab open during the event; not an SLA host. Must pass the 120-client bot test before the event.

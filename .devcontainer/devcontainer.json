@@ -1,0 +1,16 @@
+{
+  // CODE REDLINE game server in GitHub Codespaces (zero-cost host; see docs/RUNBOOK.md "Codespaces").
+  // Secrets come from GitHub → Settings → Codespaces → Secrets (DATABASE_URL, SESSION_SECRET, HOST_ADMIN_KEY).
+  "name": "CODE REDLINE server",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "postCreateCommand": "npm ci --workspace @redline/server --include-workspace-root=false --no-audit --no-fund",
+  "postStartCommand": "bash .devcontainer/start-server.sh",
+  "forwardPorts": [2567],
+  "portsAttributes": { "2567": { "label": "CODE REDLINE server", "onAutoForward": "silent" } },
+  "secrets": {
+    "DATABASE_URL": { "description": "Neon pooled connection string" },
+    "SESSION_SECRET": { "description": "Random string, at least 32 characters" },
+    "HOST_ADMIN_KEY": { "description": "Host dashboard key, at least 12 characters" }
+  }
+}
