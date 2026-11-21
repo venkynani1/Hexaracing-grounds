@@ -19,6 +19,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | ambientCG Facade001 | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade001 | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | Kloofendal 48d Partly Cloudy (Pure Sky) | hdri | Greg Zaal (original), Jarod Guest (sky edits) — Poly Haven | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | 1k HDR used for image-based lighting/reflections; 2k HDR decoded + tonemapped (ACES) to a WebP sky dome (pure sky — no terrain). | Sky, ambient light and reflections on paint/glass/wet roads. |
 | Concrete Road Barrier | prop | Amal Kumar (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete_road_barrier | Simplified, textures resized, WebP, single GLB. | Median barriers on divided roads (OMR) and Route Lockdown closures. |
+| Babylon.js KTX2 decoder + Basis/ETC1S transcoder + zstd (WASM) | runtime | Babylon.js contributors; Binomial LLC (basis_universal); Meta (zstd) | [Apache-2.0](https://github.com/BabylonJS/Babylon.js/blob/master/license.md) | https://www.npmjs.com/package/babylonjs-ktx2decoder | None — self-hosted so event day does not depend on a third-party CDN. | Transcodes KTX2/Basis textures to the GPU-native format of each device (ETC2/ASTC on Android, BC on desktop). |
 
 ## Original (made for this project, no third-party licence)
 
@@ -30,25 +31,41 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 
 | File | Size (KB) | Triangles (source → shipped) |
 |---|---:|---|
-| `public/assets/cars/car_hero.glb` | 2988 | 189,011 → 105,035 |
+| `public/assets/cars/car_hero.glb` | 2532 | 189,011 → 83,818 |
 | `public/assets/cars/car_lod1.glb` | 340 | 129,632 → 20,698 |
 | `public/assets/cars/car_lod2.glb` | 103 | 129,632 → 3,927 |
 | `public/assets/cars/car_lod3.glb` | 62 | 129,632 → 1,203 |
+| `public/assets/env/sky.ktx2` | 74 |  |
 | `public/assets/env/sky.webp` | 56 |  |
 | `public/assets/env/sky_1k.hdr` | 1401 |  |
+| `public/assets/ktx2/babylon.ktx2Decoder.js` | 24 |  |
+| `public/assets/ktx2/msc_basis_transcoder.js` | 62 |  |
+| `public/assets/ktx2/msc_basis_transcoder.wasm` | 445 |  |
+| `public/assets/ktx2/zstddec.wasm` | 29 |  |
 | `public/assets/props/barrier.glb` | 135 | 60,928 → 2,394 |
+| `public/assets/tex/asphalt_diff.ktx2` | 148 |  |
 | `public/assets/tex/asphalt_diff.webp` | 130 |  |
+| `public/assets/tex/asphalt_nor.ktx2` | 26 |  |
 | `public/assets/tex/asphalt_nor.webp` | 16 |  |
+| `public/assets/tex/asphalt_rough.ktx2` | 28 |  |
 | `public/assets/tex/asphalt_rough.webp` | 8 |  |
+| `public/assets/tex/concrete_diff.ktx2` | 51 |  |
 | `public/assets/tex/concrete_diff.webp` | 45 |  |
+| `public/assets/tex/facade001_diff.ktx2` | 95 |  |
 | `public/assets/tex/facade001_diff.webp` | 23 |  |
+| `public/assets/tex/facade006_diff.ktx2` | 77 |  |
 | `public/assets/tex/facade006_diff.webp` | 21 |  |
+| `public/assets/tex/facade018a_diff.ktx2` | 131 |  |
 | `public/assets/tex/facade018a_diff.webp` | 150 |  |
+| `public/assets/tex/facade019a_diff.ktx2` | 129 |  |
 | `public/assets/tex/facade019a_diff.webp` | 163 |  |
+| `public/assets/tex/grass_diff.ktx2` | 52 |  |
 | `public/assets/tex/grass_diff.webp` | 45 |  |
+| `public/assets/tex/pavers_diff.ktx2` | 51 |  |
 | `public/assets/tex/pavers_diff.webp` | 43 |  |
+| `public/assets/tex/pavers_nor.ktx2` | 33 |  |
 | `public/assets/tex/pavers_nor.webp` | 27 |  |
-| **total** | **5756** | |
+| **total** | **6755** | |
 
 ## Source pins (sha256)
 
@@ -71,3 +88,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 - `concrete_road_barrier/textures/concrete_road_barrier_arm_1k.jpg` — `b940847648012f2db8c24b16e07ad1e39b3bd33ea493203364deca209606e4b4`
 - `concrete_road_barrier/textures/concrete_road_barrier_nor_gl_1k.jpg` — `c1072f51ff5c3d7158f0fbb0aa26e82b816b745b9f03639c4816832af2b37c52`
 - `kloofendal_48d_partly_cloudy_puresky/sky_2k.hdr` — `5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198`
+- `babylon-ktx2-decoder/babylon.ktx2Decoder.js` — `4777d23a7e8fa8d08973611b6dae4b8a17fa260861fb3963c3bfb407d18d86e9`
+- `babylon-ktx2-decoder/msc_basis_transcoder.js` — `b8906bae7e55606aba070642eb3bce790a2b5aea774874e120e9fd41f7c7d60b`
+- `babylon-ktx2-decoder/msc_basis_transcoder.wasm` — `29becbf0eef2ce9f6d72109ad217704ec3799c432da0c26e3893b793ecab6bdc`
+- `babylon-ktx2-decoder/zstddec.wasm` — `67d12d34f82ef700ec3a3795a77590252858c70330908a87ed1e73efc268cb4b`

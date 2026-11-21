@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "cars/car_hero.glb",
-      "kb": 2988
+      "kb": 2532
     },
     {
       "path": "cars/car_lod1.glb",
@@ -17,6 +17,10 @@
       "kb": 62
     },
     {
+      "path": "env/sky.ktx2",
+      "kb": 74
+    },
+    {
       "path": "env/sky.webp",
       "kb": 56
     },
@@ -25,60 +29,120 @@
       "kb": 1401
     },
     {
+      "path": "ktx2/babylon.ktx2Decoder.js",
+      "kb": 24
+    },
+    {
+      "path": "ktx2/msc_basis_transcoder.js",
+      "kb": 62
+    },
+    {
+      "path": "ktx2/msc_basis_transcoder.wasm",
+      "kb": 445
+    },
+    {
+      "path": "ktx2/zstddec.wasm",
+      "kb": 29
+    },
+    {
       "path": "props/barrier.glb",
       "kb": 135
+    },
+    {
+      "path": "tex/asphalt_diff.ktx2",
+      "kb": 148
     },
     {
       "path": "tex/asphalt_diff.webp",
       "kb": 130
     },
     {
+      "path": "tex/asphalt_nor.ktx2",
+      "kb": 26
+    },
+    {
       "path": "tex/asphalt_nor.webp",
       "kb": 16
+    },
+    {
+      "path": "tex/asphalt_rough.ktx2",
+      "kb": 28
     },
     {
       "path": "tex/asphalt_rough.webp",
       "kb": 8
     },
     {
+      "path": "tex/concrete_diff.ktx2",
+      "kb": 51
+    },
+    {
       "path": "tex/concrete_diff.webp",
       "kb": 45
+    },
+    {
+      "path": "tex/facade001_diff.ktx2",
+      "kb": 95
     },
     {
       "path": "tex/facade001_diff.webp",
       "kb": 23
     },
     {
+      "path": "tex/facade006_diff.ktx2",
+      "kb": 77
+    },
+    {
       "path": "tex/facade006_diff.webp",
       "kb": 21
+    },
+    {
+      "path": "tex/facade018a_diff.ktx2",
+      "kb": 131
     },
     {
       "path": "tex/facade018a_diff.webp",
       "kb": 150
     },
     {
+      "path": "tex/facade019a_diff.ktx2",
+      "kb": 129
+    },
+    {
       "path": "tex/facade019a_diff.webp",
       "kb": 163
+    },
+    {
+      "path": "tex/grass_diff.ktx2",
+      "kb": 52
     },
     {
       "path": "tex/grass_diff.webp",
       "kb": 45
     },
     {
+      "path": "tex/pavers_diff.ktx2",
+      "kb": 51
+    },
+    {
       "path": "tex/pavers_diff.webp",
       "kb": 43
+    },
+    {
+      "path": "tex/pavers_nor.ktx2",
+      "kb": 33
     },
     {
       "path": "tex/pavers_nor.webp",
       "kb": 27
     }
   ],
-  "totalKB": 5756,
+  "totalKB": 6755,
   "meshes": {
     "cars/car_hero.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",
       "trisBefore": 189011,
-      "tris": 105035
+      "tris": 83818
     },
     "cars/car_lod1.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_lod1.glb",

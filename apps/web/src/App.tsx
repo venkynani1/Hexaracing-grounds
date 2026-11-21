@@ -5,11 +5,13 @@ import { Host } from './pages/Host';
 import { Credits } from './pages/Credits';
 import { Projector } from './pages/Projector';
 import { TestDrivePage } from './pages/TestDrivePage';
+import { SlicePage } from './pages/SlicePage';
 
 export function App() {
   const path = usePath();
   if (path.startsWith('/credits')) return <Credits />;
   if (path.startsWith('/test-drive')) return <TestDrivePage />;
+  if (path.startsWith('/slice')) return <SlicePage />;
   if (path.startsWith('/projector')) return <Projector />;
   if (path.startsWith('/host')) return <Host />;
   if (path.startsWith('/lobby')) return <Lobby />;

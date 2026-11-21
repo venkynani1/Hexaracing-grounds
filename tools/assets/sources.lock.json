@@ -17,5 +17,9 @@
   "concrete_road_barrier/textures/concrete_road_barrier_diff_1k.jpg": "88b2d79829ffec7b11ac4d9c8554328f30b665d2c17f634197fde4f1ca8696fe",
   "concrete_road_barrier/textures/concrete_road_barrier_arm_1k.jpg": "b940847648012f2db8c24b16e07ad1e39b3bd33ea493203364deca209606e4b4",
   "concrete_road_barrier/textures/concrete_road_barrier_nor_gl_1k.jpg": "c1072f51ff5c3d7158f0fbb0aa26e82b816b745b9f03639c4816832af2b37c52",
-  "kloofendal_48d_partly_cloudy_puresky/sky_2k.hdr": "5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198"
+  "kloofendal_48d_partly_cloudy_puresky/sky_2k.hdr": "5244534e9cf5b606f2ff513aa00ddb161b0a4826ffd88a0d3bd03ac29247d198",
+  "babylon-ktx2-decoder/babylon.ktx2Decoder.js": "4777d23a7e8fa8d08973611b6dae4b8a17fa260861fb3963c3bfb407d18d86e9",
+  "babylon-ktx2-decoder/msc_basis_transcoder.js": "b8906bae7e55606aba070642eb3bce790a2b5aea774874e120e9fd41f7c7d60b",
+  "babylon-ktx2-decoder/msc_basis_transcoder.wasm": "29becbf0eef2ce9f6d72109ad217704ec3799c432da0c26e3893b793ecab6bdc",
+  "babylon-ktx2-decoder/zstddec.wasm": "67d12d34f82ef700ec3a3795a77590252858c70330908a87ed1e73efc268cb4b"
 }

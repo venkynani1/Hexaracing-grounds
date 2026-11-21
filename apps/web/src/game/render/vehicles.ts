@@ -354,6 +354,9 @@ export class CarFleet {
       });
   }
 
+  /** Distance (m) under which the detailed LOD is used. */
+  lod1Distance = 70;
+
   get size() {
     return this.cars.size;
   }
@@ -364,6 +367,7 @@ export class CarFleet {
       seen.add(c.id);
       let car = this.cars.get(c.id);
       if (!car) this.cars.set(c.id, (car = new FleetCar(this.scene, this.lod1, this.lod2, this.brakeOnTemplates, c.color)));
+      car.lod1Distance = this.lod1Distance;
       car.set(c, cam, dt, now);
       if (c.label) car.setLabel(c.label);
     }
@@ -394,6 +398,7 @@ class FleetCar {
   private label: Mesh | null = null;
   private labelText = '';
   private readonly radius: number;
+  lod1Distance = 70;
 
   constructor(scene: Scene, lod1: CarTemplate | null, lod2: CarTemplate | null, brakeOnTpl: Mesh[], color: Color3) {
     this.root = new TransformNode('car', scene);
@@ -455,7 +460,7 @@ class FleetCar {
     this.root.position.set(p.x, 0, p.z);
     this.root.rotation.y = p.heading;
     const d = Math.hypot(cam.x - p.x, cam.z - p.z);
-    const want = d < 70 ? 0 : 1;
+    const want = d < this.lod1Distance ? 0 : 1;
     if (want !== this.lodIdx) {
       this.lods.forEach((l, i) => l.node.setEnabled(i === want));
       this.lodIdx = want;

@@ -69,6 +69,8 @@ export interface TrafficOptions {
   /** If given, traffic only spawns on these directed edges (e.g. the course corridors of a large map). */
   spawnDe?: number[];
   signal?: SignalFn;
+  /** Spawn only this vehicle type (visual vertical slice). Default: the seeded mix. */
+  onlyType?: TrafficType;
 }
 
 const IDM = { minGap: 2.5, headway: 1.2, comfortDecel: 3, stopDecel: 4 };
@@ -87,10 +89,12 @@ export class TrafficSystem {
     this.signal = opts.signal ?? ((node, heading, ms) => signalState(node, signalGroup(net, node, heading), ms, seed));
     this.exclude = new Set(opts.excludeDe ?? []);
     this.spawnPool = this.slots(opts.spawnDe);
+    this.onlyType = opts.onlyType;
     this.spawn(opts.count);
   }
 
   private readonly exclude: Set<number>;
+  private readonly onlyType: TrafficType | undefined;
   /** Closed edge ids (Route Lockdown): traffic never turns into them. */
   blockedEdges = new Set<number>();
   /** Per-edge speed multiplier (Traffic Shock). */
@@ -120,7 +124,7 @@ export class TrafficSystem {
     }
     for (let i = 0; i < Math.min(count, slots.length); i++) {
       const r = this.rng.next();
-      const type: TrafficType = r < 0.6 ? 'car' : r < 0.8 ? 'motorcycle' : r < 0.9 ? 'bus' : 'truck';
+      const type: TrafficType = this.onlyType ?? (r < 0.6 ? 'car' : r < 0.8 ? 'motorcycle' : r < 0.9 ? 'bus' : 'truck');
       const sl = slots[i]!;
       this.agents.push({ id: this.nextId++, type, de: sl.de, lane: sl.lane, laneF: sl.lane, s: sl.s, speed: 0, cruise: 0.85 + this.rng.next() * 0.2, conn: null, blocked: false });
     }

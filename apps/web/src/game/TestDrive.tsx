@@ -22,7 +22,8 @@ import {
 } from '@redline/shared';
 import { InputState } from './input';
 import { drawMap } from './minimap';
-import { GameScene, type CameraMode, type Quality } from './scene';
+import { GameScene, type Ablation, type CameraMode, type Quality } from './scene';
+import { PerfProbe } from './perf/probe';
 import { autoQuality, detectGpu } from './render/autoQuality';
 import { MiniMap, Pedals, RaceClock, Speedo, Toast, Toasts, Announce } from './hud/Hud';
 import './hud/hud.css';
@@ -51,14 +52,18 @@ export default function TestDrive({ map }: { map: WorldMap }) {
   useEffect(() => {
     const canvas = canvasRef.current!;
     const net = map.net;
-    const game = new GameScene(canvas, map, 'test-drive', quality);
+    const t0 = performance.now();
+    const ablate: Ablation = Object.fromEntries((params.get('ablate') ?? '').split(',').filter(Boolean).map((k) => [k, true]));
+    const game = new GameScene(canvas, map, 'test-drive', quality, ablate);
+    let readyAt = 0;
+    const probe = new PerfProbe(game.scene, game.engine, () => readyAt - t0);
     gameRef.current = game;
     if (params.get('color')) game.setPaint('#' + params.get('color'));
     game.setMyCar(params.get('car') ?? 'test-drive-car');
     const fixedRes = params.get('res');
     if (fixedRes) game.lockResolution(Number(fixedRes));
     game.setCameraMode((params.get('cam') as CameraMode) || 'chase');
-    void game.ready.then(() => ((loadedRef.current = true), setLoaded(true)));
+    void game.ready.then(() => game.scene.whenReadyAsync()).then(() => ((readyAt = performance.now()), (loadedRef.current = true), setLoaded(true)));
     // Spawn on the real final approach (Rajiv Gandhi Salai / OMR towards Siruseri), N km before the gate.
     const course = Object.values(map.courses)[0]!;
     const pts = coursePolyline(net, course.des);
@@ -118,31 +123,12 @@ export default function TestDrive({ map }: { map: WorldMap }) {
       const now = performance.now();
       if (bench > 0 && !benchDone && loadedRef.current) {
         if (!benchStart) benchStart = now + 5000; // 5 s warm-up (shader compile, streaming)
-        else if (now > benchStart) {
-          samples.push(now - last);
-          if (now - benchStart > bench * 1000) {
-            benchDone = true;
-            const sorted = [...samples].sort((a, b) => a - b);
-            const avgMs = samples.reduce((a, b) => a + b, 0) / samples.length;
-            const p99 = sorted[Math.floor(sorted.length * 0.99)]!;
-            const st = game.stats();
-            const r = {
-              seconds: bench,
-              frames: samples.length,
-              avgFps: +(1000 / avgMs).toFixed(1),
-              low1Fps: +(1000 / p99).toFixed(1),
-              avgFrameMs: +avgMs.toFixed(1),
-              p99FrameMs: +p99.toFixed(1),
-              quality: game.currentQuality,
-              renderScale: +(1 / game.renderScale).toFixed(2),
-              drawCalls: st.drawCalls,
-              trianglesK: Math.round(st.activeIndices / 3000),
-              gpu: detectGpu(),
-              viewport: `${innerWidth}x${innerHeight}@${devicePixelRatio}`,
-            };
-            (window as unknown as { __bench: unknown }).__bench = r;
-            setBenchOut(JSON.stringify(r, null, 1));
-          }
+        else if (now > benchStart && !samples.length) (samples.push(1), probe.begin());
+        else if (samples.length && now - benchStart > bench * 1000) {
+          benchDone = true;
+          const r = probe.end(params.get('label') ?? `test-drive ${game.currentQuality}`, { quality: game.currentQuality, renderScale: +(1 / game.renderScale).toFixed(2), gpu: detectGpu() });
+          (window as unknown as { __bench: unknown }).__bench = r;
+          setBenchOut(JSON.stringify(r, null, 1));
         }
       }
       const frameDt = Math.min(0.25, (now - last) / 1000);

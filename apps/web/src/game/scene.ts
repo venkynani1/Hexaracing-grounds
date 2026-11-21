@@ -53,6 +53,17 @@ import { CELL, WorldBuilder, Y, type CellContent } from './render/world';
 export type { CarPose } from './render/vehicles';
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
 export type CameraMode = 'chase' | 'hood' | 'top';
+/** Measurement-only switches (perf audit ablations). Never used in the live event. */
+export interface Ablation {
+  noShadows?: boolean;
+  noPost?: boolean;
+  noBuildings?: boolean;
+  noDetail?: boolean;
+  noIBL?: boolean;
+  noTraffic?: boolean;
+  noFx?: boolean;
+  noHero?: boolean;
+}
 
 /** Presets change visuals only — never gameplay (SPEC Part 1). */
 const PRESETS: Record<Quality, { minScale: number; fog: number; draw: number; shadow: number; post: boolean; bloom: boolean; detailR: number; particles: number; envSize: boolean }> = {
@@ -115,6 +126,7 @@ export class GameScene {
     map: WorldMap,
     private readonly seed: string,
     quality: Quality = 'medium',
+    readonly ablate: Ablation = {},
   ) {
     const net = map.net;
     this.net = net;
@@ -157,6 +169,7 @@ export class GameScene {
     this.camera.inputs.clear();
 
     createSky(scene, PRESETS[quality].envSize);
+    if (ablate.noIBL) scene.environmentTexture = null;
     this.mats = createWorldMaterials(scene);
     const g = MeshBuilder.CreateGround('ground', { width: 3000, height: 3000, subdivisions: 1 }, scene);
     g.position.y = Y.ground;
@@ -170,7 +183,7 @@ export class GameScene {
 
     const procedural = map.id === 'test' ? null : new ProceduralBuildings(net, seed, stationExclusions(map));
     const fixed = map.id === 'test' ? generateBuildings(net, seed, stationExclusions(map)) : [];
-    this.builder = new WorldBuilder(scene, net, this.mats, procedural, fixed, seed, { barrier: null });
+    this.builder = new WorldBuilder(scene, net, this.mats, ablate.noBuildings ? null : procedural, ablate.noBuildings ? [] : fixed, seed, { barrier: null });
     this.fx = new Fx(scene, PRESETS[quality].particles);
     this.fleet = new CarFleet(scene, null, null);
     this.traffic = new TrafficRenderer(scene, null);
@@ -225,7 +238,9 @@ export class GameScene {
   /* ---------------- quality ---------------- */
 
   private applyQuality() {
-    const P = PRESETS[this.quality];
+    const P = { ...PRESETS[this.quality] };
+    if (this.ablate.noShadows) P.shadow = 0;
+    if (this.ablate.noPost) (P.post = false), (P.bloom = false);
     this.scene.fogDensity = P.fog * (this.rain ? 1.9 : 1);
     if (P.shadow && (!this.shadows || this.shadows.getShadowMap()!.getSize().width !== P.shadow)) {
       this.shadows?.dispose();
@@ -298,7 +313,7 @@ export class GameScene {
     const dr = PRESETS[this.quality].detailR;
     for (const [k, c] of this.cells) {
       const near = cellDist(k, cx, cz) <= dr * dr + (dr ? 1 : 0);
-      for (const m of c.detail) if (m.isEnabled() !== near) m.setEnabled(near);
+      for (const m of c.detail) if (m.isEnabled() !== (near && !this.ablate.noDetail)) m.setEnabled(near && !this.ablate.noDetail);
     }
   }
 
@@ -533,7 +548,7 @@ export class GameScene {
 
   setMyCar(teamId: string) {
     this.wantTeam = teamId;
-    if (!this.heroTpl) return; // assets still loading — created when ready
+    if (!this.heroTpl || this.ablate.noHero) return; // assets still loading — created when ready
     this.hero?.dispose();
     this.hero = new HeroCar(this.scene, this.heroTpl, this.paintOverride ?? teamColor(teamId));
     this.fx.attachCar(this.hero.rearWheels, this.hero.exhaust);
@@ -547,7 +562,7 @@ export class GameScene {
     this.lastFrame = now;
     if (!this.hero) return;
     this.hero.set(p, dt);
-    this.fx.updateCar(p.slip ?? 0, Math.abs(p.speed ?? 0), !!p.nitro);
+    if (!this.ablate.noFx) this.fx.updateCar(p.slip ?? 0, Math.abs(p.speed ?? 0), !!p.nitro);
   }
 
   get othersCount() {
@@ -564,6 +579,7 @@ export class GameScene {
   }
 
   updateTraffic(items: { id: number; type: number; x: number; z: number; heading: number }[]) {
+    if (this.ablate.noTraffic) items = [];
     // Draw-distance cull (visual only): far traffic is fogged out anyway.
     const c = this.camera.position;
     const r2 = (PRESETS[this.quality].draw * 0.45) ** 2;
@@ -627,7 +643,7 @@ export class GameScene {
     this.streamCells(p.x, p.z);
     this.moveSun(p.x, p.z);
     this.refreshShadowCasters(performance.now());
-    this.fx.setRain(this.rain, new Vector3(p.x, 0, p.z));
+    this.fx.setRain(this.rain && !this.ablate.noFx, new Vector3(p.x, 0, p.z));
     // Smoothed yaw so the camera swings, not snaps, through corners.
     let dy = p.heading - this.camYaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));

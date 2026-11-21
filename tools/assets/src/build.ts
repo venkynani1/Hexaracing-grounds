@@ -21,7 +21,7 @@ const OUT = join(REPO, 'apps', 'web', 'public', 'assets');
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 
 rmSync(OUT, { recursive: true, force: true });
-for (const d of ['cars', 'props', 'tex', 'env']) mkdirSync(join(OUT, d), { recursive: true });
+for (const d of ['cars', 'props', 'tex', 'env', 'ktx2']) mkdirSync(join(OUT, d), { recursive: true });
 await MeshoptSimplifier.ready;
 
 const triCount = (doc: Document) =>
@@ -86,7 +86,7 @@ async function buildCar(lod: 'hero' | 'lod1' | 'lod2' | 'lod3') {
   const before = triCount(doc);
   await doc.transform(
     weld({}),
-    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.5 : lod === 'lod1' ? 0.12 : lod === 'lod2' ? 0.025 : 0.006, error: lod === 'hero' ? 0.0008 : lod === 'lod1' ? 0.004 : lod === 'lod2' ? 0.03 : 0.08 }),
+    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.27 : lod === 'lod1' ? 0.12 : lod === 'lod2' ? 0.025 : 0.006, error: lod === 'hero' ? 0.0008 : lod === 'lod1' ? 0.004 : lod === 'lod2' ? 0.03 : 0.08 }),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: lod === 'hero' ? [1024, 1024] : lod === 'lod1' ? [256, 256] : [64, 64], quality: 82 }),
     quantize(),
@@ -121,6 +121,19 @@ async function buildProp(id: string, outName: string, ratio: number) {
 
 async function tex(src: string, out: string, size: number, quality = 80) {
   await sharp(src).resize(size, size, { fit: 'fill' }).webp({ quality }).toFile(join(OUT, 'tex', out));
+  await toKtx2(join(OUT, 'tex', out), size, size);
+}
+
+/** GPU-compressed copy (KTX2 / Basis ETC1S + mipmaps): transcoded on device to ETC2/ASTC/BC — ~1/6 the VRAM of RGBA. */
+async function toKtx2(webpPath: string, w: number, h: number, normal = false) {
+  const { encodeToKTX2 } = await import('ktx2-encoder');
+  const png = await sharp(webpPath).resize(w, h, { fit: 'fill' }).png().toBuffer();
+  const imageDecoder = async (buf: Uint8Array) => {
+    const { data, info } = await sharp(Buffer.from(buf)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return { data: new Uint8Array(data), width: info.width, height: info.height };
+  };
+  const out = await encodeToKTX2(new Uint8Array(png), { isUASTC: false, generateMipmap: true, qualityLevel: normal ? 200 : 140, compressionLevel: 2, isNormalMap: normal, imageDecoder } as never);
+  writeFileSync(webpPath.replace(/\.webp$/, '.ktx2'), out);
 }
 
 async function buildTextures() {
@@ -145,6 +158,10 @@ async function buildTextures() {
   for (let i = 0; i < hdr.w * hdr.h; i++)
     for (let c = 0; c < 3; c++) rgb[i * 3 + c] = Math.round(255 * Math.pow(aces(hdr.data[i * 3 + c]! * 0.9), 1 / 2.2));
   await sharp(rgb, { raw: { width: hdr.w, height: hdr.h, channels: 3 } }).resize(2048, 1024).webp({ quality: 84 }).toFile(join(OUT, 'env', 'sky.webp'));
+  await toKtx2(join(OUT, 'env', 'sky.webp'), 1024, 512);
+  // self-hosted KTX2 transcoder runtime (Apache-2.0)
+  mkdirSync(join(OUT, 'ktx2'), { recursive: true });
+  for (const f of ['babylon.ktx2Decoder.js', 'msc_basis_transcoder.js', 'msc_basis_transcoder.wasm', 'zstddec.wasm']) copyFileSync(join(CACHE, 'babylon-ktx2-decoder', f), join(OUT, 'ktx2', f));
   copyFileSync(join(CACHE, 'kloofendal_48d_partly_cloudy_puresky', 'sky_1k.hdr'), join(OUT, 'env', 'sky_1k.hdr'));
 }
 
