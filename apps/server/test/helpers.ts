@@ -1,4 +1,4 @@
-import { connectPglite, type DbHandle } from '@redline/db';
+import { connectPglite, connectPostgres, type DbHandle } from '@redline/db';
 import { buildServer, type BuiltServer } from '../src/app';
 import { loadConfig, type ServerConfig } from '../src/config';
 
@@ -16,7 +16,9 @@ let counter = 0;
 
 export async function makeServer(over: Partial<ServerConfig> = {}, opts: { manualClock?: boolean } = {}): Promise<TestServer> {
   // Tests use a short countdown by default only when asked; keep production values otherwise.
-  const db = await connectPglite();
+  // TEST_DATABASE_URL: run the suite against a FRESH real Postgres (e.g. a new Neon test branch, migrated beforehand with
+  // `npm run db:verify`). Every test uses its own event name, so tests don't collide in a shared database.
+  const db = process.env.TEST_DATABASE_URL ? await connectPostgres(process.env.TEST_DATABASE_URL, { max: 4 }) : await connectPglite();
   const config: ServerConfig = {
     ...loadConfig({ NODE_ENV: 'test', HOST_ADMIN_KEY: HOST_KEY, SESSION_SECRET: 'test-secret-'.padEnd(40, 'x') }),
     eventName: `test-event-${process.pid}-${++counter}`,

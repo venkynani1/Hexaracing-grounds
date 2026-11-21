@@ -23,11 +23,31 @@ export interface DbHandle {
   close(): Promise<void>;
 }
 
-/** Neon / any Postgres via a pooled connection. Use the Neon *pooler* URL in production. */
-export async function connectPostgres(url: string, opts: { migrate?: boolean; max?: number } = {}): Promise<DbHandle> {
-  const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10 });
+/**
+ * Neon / any Postgres. Runtime traffic uses the Neon *pooler* URL (`-pooler` host, `sslmode=require`); migrations can use
+ * the direct (unpooled) URL via `migrationUrl` (DDL + migration bookkeeping outside PgBouncer transaction mode).
+ * Neon autosuspend / pooler restarts close idle connections: the pool drops them (`error` handler — without it Node
+ * crashes on an idle-client error), recycles idle clients before Neon's 5-min suspend, and reconnects on next use.
+ */
+export async function connectPostgres(url: string, opts: { migrate?: boolean; max?: number; migrationUrl?: string } = {}): Promise<DbHandle> {
+  const pool = new pg.Pool({
+    connectionString: url,
+    max: opts.max ?? 10,
+    idleTimeoutMillis: 60_000,
+    connectionTimeoutMillis: 15_000, // a suspended Neon compute takes ~0.5–2 s to wake
+    keepAlive: true,
+  });
+  pool.on('error', (err) => console.warn(`[db] idle connection dropped (${(err as Error).message}) — will reconnect on next query`));
   const db = drizzlePg(pool, { schema }) as unknown as Db;
-  if (opts.migrate) await migratePg(drizzlePg(pool, { schema }), { migrationsFolder: MIGRATIONS_DIR });
+  if (opts.migrate) {
+    const mp = opts.migrationUrl ? new pg.Pool({ connectionString: opts.migrationUrl, max: 1, connectionTimeoutMillis: 15_000 }) : pool;
+    if (mp !== pool) mp.on('error', () => undefined);
+    try {
+      await migratePg(drizzlePg(mp, { schema }), { migrationsFolder: MIGRATIONS_DIR });
+    } finally {
+      if (mp !== pool) await mp.end();
+    }
+  }
   return {
     db,
     kind: 'postgres',

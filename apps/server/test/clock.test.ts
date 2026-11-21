@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { auditLogs, eventStates } from '@redline/db';
 import { BALANCE, BEATS, PHASES } from '@redline/shared';
 import { EventClock } from '../src/clock/EventClock';
@@ -108,7 +108,9 @@ describe('clock: Director + host START', () => {
       const phases = [...new Set(states.filter((r) => r.status === 'LIVE').map((r) => r.phase))];
       expect(phases).toEqual(PHASES.map((p) => p.id));
 
-      const beats = await s.db.db.select().from(auditLogs).where(eq(auditLogs.action, 'beat.fire')).orderBy(asc(auditLogs.at));
+      const beats = await s.db.db.select().from(auditLogs)
+        .where(and(eq(auditLogs.action, 'beat.fire'), eq(auditLogs.eventId, s.eventId)))
+        .orderBy(asc(auditLogs.at));
       expect(beats.map((b) => (b.payload as { beat: string }).beat)).toEqual(BEATS.map((b) => b.id));
     } finally {
       await s.dispose();

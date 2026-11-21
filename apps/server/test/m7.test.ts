@@ -3,7 +3,7 @@
  */
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { Bot } from '@redline/loadtest';
 import { offerLetters, players, scoringEvents, teams } from '@redline/db';
 import { NEUTRAL_INPUT, SQUAD_RUBRIC, gateLayout, tieBreakHash, type Role, type ScoringCategory, type ServerMessage } from '@redline/shared';
@@ -282,7 +282,7 @@ describe('M7: championship + offer letters', () => {
       const champ = (await host.next((m) => m.t === 'championship')) as Extract<ServerMessage, { t: 'championship' }>;
       expect(champ.standings).toHaveLength(2);
       const allPlayers = await s.db.db.select().from(players).innerJoin(teams, eq(players.teamId, teams.id)).where(eq(teams.eventId, s.eventId));
-      const letters = await s.db.db.select().from(offerLetters);
+      const letters = await s.db.db.select().from(offerLetters).where(inArray(offerLetters.playerId, allPlayers.map((p) => p.players.id)));
       expect(letters).toHaveLength(allPlayers.length); // one per player
       expect(new Set(letters.map((l) => l.playerId)).size).toBe(8);
       for (const q of sq) {

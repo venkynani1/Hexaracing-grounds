@@ -23,6 +23,7 @@
     "build": "npm run build -w @redline/web",
     "db:generate": "npm run db:generate -w @redline/db --",
     "db:migrate": "npm run db:migrate -w @redline/db",
+    "db:verify": "npm run db:verify -w @redline/db",
     "loadtest": "npm run start -w @redline/loadtest --",
     "map:extract": "python3 tools/mapbuild/extract.py tools/mapbuild/data/raw/tamil_nadu.osm.pbf tools/mapbuild/data/raw/chennai-extract.json",
     "map:build": "npm run build -w @redline/mapbuild",

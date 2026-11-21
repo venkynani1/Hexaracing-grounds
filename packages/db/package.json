@@ -7,7 +7,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/migrate-cli.ts"
+    "db:migrate": "tsx src/migrate-cli.ts",
+    "db:verify": "tsx src/verify-cli.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.17",

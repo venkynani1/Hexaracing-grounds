@@ -95,12 +95,13 @@ describe('M5: verified start locations', () => {
       expect(meta!.worldScale).toBeCloseTo(map.scale);
 
       // A disabled (unverified) location is listed but not selectable.
-      await s.db.db.insert(startLocations).values({ code: 'atlantis', name: 'Atlantis', enabled: false });
+      const atlantis = `atlantis-${s.eventId.slice(0, 8)}`; // unique: the catalogue table is shared across events
+      await s.db.db.insert(startLocations).values({ code: atlantis, name: 'Atlantis', enabled: false });
       const list = await get(s, '/api/start-locations');
       expect(list.body.find((x: { code: string }) => x.code === 'kelambakkam').selectable).toBe(true);
       const sq = await fullSquad(s, 'Pickers');
       const cap = { authorization: `Bearer ${sq.captain.sessionToken}` };
-      expect((await post(s, '/api/team/start-location', { code: 'atlantis' }, cap)).body.error).toBe('START_DISABLED');
+      expect((await post(s, '/api/team/start-location', { code: atlantis }, cap)).body.error).toBe('START_DISABLED');
       expect((await post(s, '/api/team/start-location', { code: 'kelambakkam' }, { authorization: `Bearer ${sq.others[0].sessionToken}` })).status).toBe(403);
       expect((await post(s, '/api/team/start-location', { code: 'kelambakkam' }, cap)).status).toBe(200);
       // Capacity: 6 squads per location.
