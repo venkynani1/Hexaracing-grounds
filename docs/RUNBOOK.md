@@ -104,3 +104,15 @@ Then point the web app at it (Vercel project `code-redline`, Production env) and
 4. Vercel `VITE_SERVER_URL` / `VITE_WS_URL` → that URL (`wss://` for WS) → redeploy.
 Limits: free 120 core-hours/month (≈ 60 h on 2-core); stops after the idle timeout without user activity — keep the
 codespace tab open during the event; not an SLA host. Must pass the 120-client bot test before the event.
+
+## Isolated full-event load test (`tools/loadtest/src/eventtest.ts`)
+```
+npm run eventtest -w @redline/loadtest -- --live-url <live server URL> --squads 30 --race-minutes 20
+```
+- Spawns its own server (127.0.0.1:2701) with a fresh embedded Postgres under `tools/loadtest/reports/<run>/pglite`,
+  event `loadtest-<run>`, random host key/session secret, time warp enabled; `DATABASE_URL*` removed from its env.
+- Aborts before any load unless: target ≠ live URL, test event name ≠ live, different world, fresh test event.
+- 30 squads × 4 roles (real registration, sessions, WS); racers drive their courses at 20 Hz; host START;
+  reconnection storm; server restart (recovery + persistence); accelerated finish; leaderboard vs SQL; live
+  event read-only before/after. Report: `report.md` / `report.json` / `events.jsonl` in the run folder (gitignored).
+- `--no-live-check` = harness self-test only (live check reported NOT RUN → overall FAIL).

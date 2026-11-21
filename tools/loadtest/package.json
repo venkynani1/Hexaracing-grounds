@@ -3,15 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/bot.ts" },
+  "exports": {
+    ".": "./src/bot.ts"
+  },
   "scripts": {
     "start": "tsx src/cli.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "eventtest": "tsx src/eventtest.ts"
   },
   "dependencies": {
     "@redline/shared": "*",
     "tsx": "^4.23.0",
-    "ws": "^8.23.0"
+    "ws": "^8.23.0",
+    "@redline/db": "*"
   },
-  "devDependencies": { "@types/ws": "^8.18.1" }
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
 }

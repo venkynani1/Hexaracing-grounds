@@ -1,3 +1,4 @@
+import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { createHash } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -303,7 +304,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
     const force = ((req.body ?? {}) as { force?: unknown }).force === true;
     return { clock: await room.start({ force }) };
   });
-  app.get('/api/host/world', { preHandler: requireHost }, async () => room.worldStatus());
+  app.get('/api/host/world', { preHandler: requireHost }, async () => ({ ...room.worldStatus(), process: processStats() }));
   app.post('/api/host/warp', { preHandler: requireHost }, async (req) => {
     if (!config.allowTimeWarp) throw new ApiError(403, 'WARP_DISABLED', 'Time warp is disabled (rehearsal/test only)');
     const to = Number(((req.body ?? {}) as { toElapsedMs?: unknown }).toElapsedMs);
@@ -430,4 +431,28 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
       await app.close();
     },
   };
+}
+
+/* Process metrics for /api/host/world (host-only): CPU % of one core since the previous call, memory, event-loop delay. */
+const loopDelay = monitorEventLoopDelay({ resolution: 10 });
+loopDelay.enable();
+let lastCpu = process.cpuUsage();
+let lastAt = performance.now();
+function processStats() {
+  const now = performance.now();
+  const cpu = process.cpuUsage(lastCpu);
+  const wallMs = Math.max(1, now - lastAt);
+  lastCpu = process.cpuUsage();
+  lastAt = now;
+  const m = process.memoryUsage();
+  const out = {
+    cpuPctOneCore: Math.round(((cpu.user + cpu.system) / 1000 / wallMs) * 1000) / 10,
+    rssMB: Math.round(m.rss / 1048576),
+    heapUsedMB: Math.round(m.heapUsed / 1048576),
+    eventLoopDelayP99Ms: Math.round(loopDelay.percentile(99) / 1e4) / 100,
+    eventLoopDelayMaxMs: Math.round(loopDelay.max / 1e4) / 100,
+    uptimeS: Math.round(process.uptime()),
+  };
+  loopDelay.reset();
+  return out;
 }
