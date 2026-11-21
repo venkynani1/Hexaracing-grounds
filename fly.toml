@@ -1,0 +1,48 @@
+# CODE REDLINE game server on Fly.io — TEST deployment (embedded PGlite on a volume, no Neon yet).
+# One machine, always on: the world lives in ONE process — never scale to more than 1 machine.
+# Deploy from the repo root (docs/RUNBOOK.md "Fly.io test deployment"):
+#   fly apps create code-redline-server
+#   fly volumes create redline_data --region bom --size 1
+#   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) HOST_ADMIN_KEY=$(openssl rand -hex 12)
+#   fly deploy --ha=false
+# For the real event: `fly secrets set DATABASE_URL=<Neon pooled URL>` and delete ALLOW_EMBEDDED_DB below.
+app = "code-redline-server"
+primary_region = "bom"   # Mumbai — closest Fly region to Chennai
+
+[build]
+  dockerfile = "apps/server/Dockerfile"
+
+[env]
+  PORT = "2567"
+  MAP = "chennai"
+  TRUST_PROXY = "true"
+  PUBLIC_WEB_ORIGIN = "https://code-redline.vercel.app"
+  ALLOW_EMBEDDED_DB = "true"      # test only: squads/scores live on the volume below, not in Neon
+  PGLITE_DIR = "/data/pglite"
+
+[mounts]
+  source = "redline_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  auto_stop_machines = "off"     # never sleep: stopping the machine ends the live world
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 600
+
+[[vm]]
+  size = "shared-cpu-2x"         # enough for phone testing; use performance-2x for the 120-player event
+  memory = "1gb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 2567
+    path = "/api/health"
+    interval = "10s"
+    timeout = "2s"

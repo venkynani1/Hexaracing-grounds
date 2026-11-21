@@ -2,6 +2,14 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-21 — Game server deployment (prepared, blocked on Fly token)
+
+- Server: `ALLOW_EMBEDDED_DB=true` opt-in lets a production build run on PGlite (`PGLITE_DIR` on a volume) for
+  test deployments; without it production still refuses to start without `DATABASE_URL` (`config.test.ts`).
+- `fly.toml` (repo root): app `code-redline-server`, region bom, 1 always-on machine, volume `redline_data`,
+  origin `https://code-redline.vercel.app`. Image verified locally in production mode; 5-bot one-world smoke OK.
+- NOT deployed: no Fly API token available to the build environment. Steps in docs/RUNBOOK.md.
+
 ## 2026-11-21 — Vercel deployment + Android benchmark route
 
 ### What runs

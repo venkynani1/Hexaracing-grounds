@@ -6,7 +6,7 @@ const config = loadConfig();
 const db = config.databaseUrl
   ? await connectPostgres(config.databaseUrl, { migrate: true })
   : await connectPglite(config.pgliteDir, { migrate: true });
-if (!config.databaseUrl) console.warn(`[server] DATABASE_URL not set — using embedded PGlite (${config.pgliteDir ?? 'in-memory'}). Dev only.`);
+if (!config.databaseUrl) console.warn(`[server] DATABASE_URL not set — using embedded PGlite (${config.pgliteDir ?? 'in-memory'}). Dev/test deployments only — NOT for the event.`);
 
 const server = await buildServer({ config, db });
 const url = await server.listen();

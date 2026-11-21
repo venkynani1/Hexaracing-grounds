@@ -66,3 +66,28 @@ Server settings: `PORT`, `PUBLIC_WEB_ORIGIN` (the Vercel URL; comma-separate if 
 - Real time against a running server: start it with `JOIN_RATE_LIMIT=10000 COUNTDOWN_MS=2000 RELEASE_AT_MS=0`, then
   `npm run loadtest -- --url http://<server> --bots 30 --roles --seconds 900 --host-key <key> --origin <web origin> --start`
   (30 racers + 90 role clients + host + projector). Run the bots from a different machine than the server for clean numbers.
+
+
+## Fly.io test deployment (embedded DB — phone testing only)
+
+Prepared and verified in the build environment (image built from this repo, booted in production mode with
+`ALLOW_EMBEDDED_DB=true` + `PGLITE_DIR` on a mounted volume; 5 bot squads in one world, 20 Hz, tick p99 3.3 ms).
+Not yet deployed: the Fly API token was not provided to the build environment. From any machine with
+[flyctl](https://fly.io/docs/flyctl/install/) and `fly auth login`, at the repo root (`fly.toml` is committed):
+
+```
+fly apps create code-redline-server
+fly volumes create redline_data --region bom --size 1
+fly secrets set SESSION_SECRET=$(openssl rand -hex 32) HOST_ADMIN_KEY=$(openssl rand -hex 12)
+fly deploy --ha=false
+curl https://code-redline-server.fly.dev/api/health    # {"ok":true,"db":true,...}
+```
+Keep the HOST_ADMIN_KEY you generated (host dashboard login): `fly secrets` never shows it again.
+
+Then point the web app at it (Vercel project `code-redline`, Production env) and redeploy:
+`VITE_SERVER_URL=https://code-redline-server.fly.dev`, `VITE_WS_URL=wss://code-redline-server.fly.dev`.
+
+- `ALLOW_EMBEDDED_DB=true` is a test-only opt-in (the server refuses to start in production without
+  `DATABASE_URL` otherwise). Data survives restarts on the `redline_data` volume, not a volume loss.
+- For the event: `fly secrets set DATABASE_URL=<Neon pooled URL>`, remove `ALLOW_EMBEDDED_DB`, size `performance-2x`.
+- Never more than one machine (`--ha=false`, no `fly scale count 2`): ONE WORLD lives in one process.

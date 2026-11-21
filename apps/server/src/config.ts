@@ -30,7 +30,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (production) {
     if (sessionSecret.length < 32) throw new Error('SESSION_SECRET must be set (>= 32 chars) in production');
     if (hostAdminKey.length < 12) throw new Error('HOST_ADMIN_KEY must be set (>= 12 chars) in production');
-    if (!env.DATABASE_URL) throw new Error('DATABASE_URL must be set in production');
+    // Embedded PGlite in production only with an explicit, logged opt-in (phone/test deployments). Data lives in
+    // PGLITE_DIR (put it on a persistent volume) and is lost if that disk is. Never for the real event.
+    if (!env.DATABASE_URL && env.ALLOW_EMBEDDED_DB !== 'true') throw new Error('DATABASE_URL must be set in production (or ALLOW_EMBEDDED_DB=true for a test deployment)');
   }
   return {
     port: Number(env.PORT ?? 2567),
