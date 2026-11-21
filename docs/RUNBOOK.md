@@ -72,12 +72,15 @@ Server settings: `PORT`, `PUBLIC_WEB_ORIGIN` (the Vercel URL; comma-separate if 
 
 Prepared and verified in the build environment (image built from this repo, booted in production mode with
 `ALLOW_EMBEDDED_DB=true` + `PGLITE_DIR` on a mounted volume; 5 bot squads in one world, 20 Hz, tick p99 3.3 ms).
-Not yet deployed: the Fly API token was not provided to the build environment. From any machine with
+DEPLOYED 2026-11-21: https://code-redline-server.fly.dev (Fly app `code-redline-server`, personal org, region `sin` —
+`bom` is not offered for new apps; volume `redline_data` 1 GB). Image: built from the repo with dependencies installed on
+the host (the sandbox's network breaks `npm ci` inside `docker build`), pushed with `fly deploy --image <local> --local-only`;
+on a normal machine plain `fly deploy` builds `apps/server/Dockerfile`. To redeploy from any machine with
 [flyctl](https://fly.io/docs/flyctl/install/) and `fly auth login`, at the repo root (`fly.toml` is committed):
 
 ```
 fly apps create code-redline-server
-fly volumes create redline_data --region bom --size 1
+fly volumes create redline_data --region sin --size 1
 fly secrets set SESSION_SECRET=$(openssl rand -hex 32) HOST_ADMIN_KEY=$(openssl rand -hex 12)
 fly deploy --ha=false
 curl https://code-redline-server.fly.dev/api/health    # {"ok":true,"db":true,...}

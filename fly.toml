@@ -2,12 +2,12 @@
 # One machine, always on: the world lives in ONE process — never scale to more than 1 machine.
 # Deploy from the repo root (docs/RUNBOOK.md "Fly.io test deployment"):
 #   fly apps create code-redline-server
-#   fly volumes create redline_data --region bom --size 1
+#   fly volumes create redline_data --region sin --size 1
 #   fly secrets set SESSION_SECRET=$(openssl rand -hex 32) HOST_ADMIN_KEY=$(openssl rand -hex 12)
 #   fly deploy --ha=false
 # For the real event: `fly secrets set DATABASE_URL=<Neon pooled URL>` and delete ALLOW_EMBEDDED_DB below.
 app = "code-redline-server"
-primary_region = "bom"   # Mumbai — closest Fly region to Chennai
+primary_region = "sin"   # Singapore — closest Fly region to Chennai offered for new apps
 
 [build]
   dockerfile = "apps/server/Dockerfile"
