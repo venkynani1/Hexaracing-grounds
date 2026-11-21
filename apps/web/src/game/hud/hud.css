@@ -91,3 +91,4 @@
 .slice-result tr.bad td { color: #ff8a98; }
 .slice-result pre { font: 10px/1.35 ui-monospace, monospace; white-space: pre-wrap; opacity: 0.8; }
 .slice-result-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+@media (max-width: 520px) { .rh-tag { max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; } }

@@ -62,13 +62,15 @@ npm run loadtest -- --url http://localhost:2567 --bots 30 --seconds 60 --host-ke
 npm run assets:fetch # download licensed 3D/texture sources (sha256-pinned, tools/assets/sources.lock.json)
 npm run assets:build # optimise → apps/web/public/assets + regenerate docs/ASSETS.md
 # /test-drive?auto=1&bench=60  offline visual checkpoint + on-device benchmark (never touches the event)
+# /slice?accept=15[&auto=1][&q=low|medium|high]  vertical slice + on-device PERFORMANCE GATE (docs/ACCEPTANCE.md)
+# cd tools/loadtest && npx tsx src/rehearsal.ts --url <server> --host-key <key> --minutes 62   # real-time 60-min rehearsal, 120 clients
 ```
 
 ## Environment variables
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M8 automated acceptance tests pass locally. Visual rebuild done (see docs/VISUALS.md); real-phone FPS still unmeasured. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
+M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUALS.md); realistic-engine vertical slice `/slice` built and measured (docs/PERF_AUDIT.md) — the on-device 30 FPS gate (docs/ACCEPTANCE.md) is NOT yet run (no device in the build env). Do not expand the full Chennai environment until that gate passes. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.
@@ -140,3 +142,10 @@ M1–M8 automated acceptance tests pass locally. Visual rebuild done (see docs/V
 - `apps/web/src/game/TestDrive.tsx` — `/test-drive` offline OMR checkpoint (shared physics + traffic AI), autopilot, `?bench=`.
 - Engineer console: `CodingStepper` in `pages/RoleConsole.tsx`; Lobby gives it the screen during coding rounds.
 - Status/limits/measurements: `docs/VISUALS.md`.
+
+## Code map (Realistic engine — vertical slice)
+- `apps/web/src/game/perf/probe.ts` — PerfProbe: frame-interval distribution (median, 1% low, p95, max, stalls), JS/RT/active-mesh time, draw calls, tris, unique GPU texture memory (compressed-aware), effects, long tasks, heap, download, FPS timeline. Used by `/test-drive?bench=` and `/slice?accept=`.
+- `apps/web/src/game/slice/` — `corridor.ts` (≈805 m of OMR from the OSM graph, edge ids pinned), `build.ts` (bounded static world merged per material in 400 m chunks; modular buildings on the SHARED collision lots), `bake.ts` (sun/sky/AO/soft shadows into vertex colours; unlit static materials = emissive white × texture × vertex colour), `SliceScene.ts` (no shadow map, no post, cars only lit, KTX2, warm-up, dynamic resolution), `SliceDrive.tsx` (shared physics + shared traffic AI `onlyType: 'car'`, autopilot, acceptance gate UI/JSON).
+- Ablation switches for audits: `GameScene(..., ablate)` / `/test-drive?ablate=noShadows,noPost,...` (measurement only).
+- KTX2: `tools/assets` writes `.ktx2` next to every world texture; transcoder self-hosted in `public/assets/ktx2` (Apache-2.0); `render/assets.ts` `tiledCompressed()` with real WebP fallback.
+- Docs: `docs/PERF_AUDIT.md` (measured), `docs/ACCEPTANCE.md` (device protocol + gate), `docs/ASSET_ACQUISITION.md` (manifest + missing-asset checklist), `docs/reference/omr/` (licensed reference photos, not shipped).

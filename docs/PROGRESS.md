@@ -221,3 +221,17 @@ Update this at the end of every session: what runs, what's tested, what's next, 
 - Tested: 110 unit/integration + 4 perf + 7 e2e pass; typecheck; build.
 - Measured (SwiftShader software GPU only): low 30 FPS / 87 draws / 45k tris; medium 11 FPS / 209 / 268k; high 10 FPS / 250 / 284k. See docs/VISUALS.md.
 - NOT done: real mid-range Android measurement (no device here — run `/test-drive?bench=60` on the phone), auto-rickshaws (needs a shared-sim traffic type), real landmark buildings, night lighting, puddles/splashes. Full list in docs/VISUALS.md.
+
+## Session: realistic visual engine (audit → vertical slice → gates)
+- Phase 1 audit (measured, SwiftShader + CPU×4 proxy + ablations): pixel shading, the 105k-tri hero car, the
+  shadow map and JS/draw-call cost were the measured causes; physics is negligible. docs/PERF_AUDIT.md.
+- Phase 2/4: baked lighting + unlit merged static world, no shadow map/post, hero 83.8k / low uses 20.7k LOD,
+  traffic LOD1 < 28 m, KTX2 (ETC2 on Android) with self-hosted transcoder, shader warm-up, chunked bounded slice.
+  Same harness, high preset: median FPS 3.9 → 9.9, JS/frame 9.1 → 4.0 ms (CPU×4: 37.6 → 14.8 ms),
+  draws 297 → 192, texture memory 93.6 → 17.9 MB, first ready frame 11.5 → 1.4 s.
+- Phase 3: `/slice` — ≈805 m of real OMR (Taramani junction, petrol station location, gantry, median, kerbs,
+  footpaths, rain trees, bus shelter, signals, 6 licensed traffic cars), playable, shared physics + traffic AI.
+- Phase 5: on-device gate implemented (`/slice?accept=15`), **not run — no Android device in this environment.**
+- Phase 6: see results in docs/ACCEPTANCE.md (real-time 60-min rehearsal, 120 participants + 2 observers).
+- Not done: device gate; buses/trucks/autos/bikes as licensed models (acquisition checklist); applying the slice
+  architecture to the full Chennai world (blocked on the device gate by directive).

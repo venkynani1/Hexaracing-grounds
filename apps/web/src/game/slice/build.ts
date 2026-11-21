@@ -809,7 +809,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     sm.freeze();
     const board = MeshBuilder.CreatePlane('gantry-board', { width: 10, height: 3.1 }, scene);
     board.position.set(gantry.x, 6.1, gantry.z);
-    board.rotation.y = gantry.yaw + Math.PI;
+    board.rotation.y = gantry.yaw; // plane front (−Z) faces drivers approaching along +heading
     board.material = sm;
     board.freezeWorldMatrix();
     meshes.push(board);
