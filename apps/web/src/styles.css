@@ -261,3 +261,6 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 
 .eng-focus .console-head .eyebrow { display: none; }
 .eng-form input { font-variant-ligatures: none; }
+.bench-launcher fieldset { border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 10px; margin: 0 0 12px; padding: 8px 12px; }
+.bench-launcher label { display: block; padding: 6px 0; font-size: 15px; }
+.bench-launcher .btn.primary { display: inline-block; margin: 6px 0 12px; }

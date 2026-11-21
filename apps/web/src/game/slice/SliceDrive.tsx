@@ -98,9 +98,13 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
   const [quality, setQuality] = useState<SliceQuality>((params.get('q') as SliceQuality) || 'medium');
   const [rain, setRain] = useState(params.get('rain') === '1');
   const [load, setLoad] = useState({ p: 0, label: 'Loading' });
-  const [hud, setHud] = useState({ speed: 0, fuel: 75, health: 100, tires: 100, nitro: 100, nitroOn: false, fps: 0, t: 0, toGo: 800, note: '' });
-  const [result, setResult] = useState<{ report: ProbeReport; gate: Gate; device: unknown; build: unknown } | null>(null);
+  const [hud, setHud] = useState({ ms: 0, msMax: 0, speed: 0, fuel: 75, health: 100, tires: 100, nitro: 100, nitroOn: false, fps: 0, t: 0, toGo: 800, note: '' });
+  const [result, setResult] = useState<{ config?: unknown; report: ProbeReport; gate: Gate; device: unknown; build: unknown } | null>(null);
   const [progress, setProgress] = useState('');
+  const benchLabel = (() => {
+    const b = (params.get('bench') ?? 'C').toUpperCase();
+    return b === 'A' ? 'car + road' : b === 'B' ? 'road + vegetation' : `full ${rain ? 'rain' : 'dry'}`;
+  })();
   const rainRef = useRef(rain);
   rainRef.current = rain;
 
@@ -263,6 +267,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
       let last = performance.now();
       let hudAt = 0;
       let mapAt = 0;
+      const ftWin: number[] = [];
       let rainAt = performance.now();
       let probeStart = 0;
       let finished = false;
@@ -274,6 +279,8 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
       game.engine.runRenderLoop(() => {
         const now = performance.now();
         const frameDt = Math.min(0.25, (now - last) / 1000);
+        ftWin.push(now - last);
+        if (ftWin.length > 120) ftWin.shift();
         last = now;
         acc = Math.min(acc + frameDt, STEP * 5);
         const p = predictor!;
@@ -360,7 +367,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
             finished = true;
             const report = probe.end(`slice ${game.quality}${auto ? ' autopilot' : ' manual'}`, { quality: game.quality, renderScale: +(1 / game.renderScale).toFixed(2), gpu: detectGpu() });
             void deviceInfo().then((device) => {
-              const r = { report, gate: evaluate(report, acceptMin, scaleTl), device, build: { ...game.stats, scaleTimeline: scaleTl } };
+              const r = { config: { scene: benchLabel, quality: game.quality, rain: rainRef.current, off: [...OFF], url: location.pathname + location.search, offline: true }, report, gate: evaluate(report, acceptMin, scaleTl), device, build: { ...game.stats, scaleTimeline: scaleTl } };
               (window as unknown as { __accept: unknown }).__accept = r;
               setResult(r);
             });
@@ -374,7 +381,10 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
         if (now - hudAt > 150) {
           hudAt = now;
           const end = cor.pts[cor.pts.length - 1]!;
+          const ftAvg = ftWin.reduce((a, b) => a + b, 0) / Math.max(1, ftWin.length);
           setHud({
+            ms: ftAvg,
+            msMax: Math.max(0, ...ftWin),
             speed: Math.abs(fwd) * 3.6,
             fuel: s.fuel,
             health: s.health,
@@ -423,9 +433,15 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
         <span className="rh-chip mono" data-testid="fps" data-fps={hud.fps}>
           {hud.fps} fps
         </span>
+        <span className="rh-chip mono" data-testid="frametime" title="frame time: average / worst of the last 120 frames">
+          {hud.ms.toFixed(1)} / {Math.round(hud.msMax)} ms
+        </span>
       </div>
       <MiniMap canvasRef={mapRef} />
-      <div className="rh-tag">Vertical slice · Rajiv Gandhi Salai (OMR), Taramani · offline{auto ? ' · autopilot' : ''}</div>
+      <div className="rh-tag">
+        {location.pathname.startsWith('/benchmark') ? `Offline benchmark · ${benchLabel}` : 'Vertical slice · Rajiv Gandhi Salai (OMR), Taramani · offline'}
+        {auto ? ' · autopilot' : ''}
+      </div>
       <Toasts>
         <Toast tone="gold">Slice end · {Math.round(hud.toGo)} m</Toast>
         {hud.note && <Toast tone="warn">{hud.note}</Toast>}
@@ -442,7 +458,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
   );
 }
 
-function ResultPanel({ r }: { r: { report: ProbeReport; gate: Gate; device: unknown; build: unknown } }) {
+function ResultPanel({ r }: { r: { config?: unknown; report: ProbeReport; gate: Gate; device: unknown; build: unknown } }) {
   const json = JSON.stringify(r, null, 1);
   return (
     <div className="slice-result" data-testid="accept-result" data-pass={r.gate.pass}>
@@ -461,7 +477,8 @@ function ResultPanel({ r }: { r: { report: ProbeReport; gate: Gate; device: unkn
       </table>
       <div className="slice-result-actions">
         <button className="btn" onClick={() => void navigator.clipboard?.writeText(json)}>Copy JSON</button>
-        <a className="btn" download="slice-acceptance.json" href={`data:application/json;charset=utf-8,${encodeURIComponent(json)}`}>
+        <a className="btn" href="/benchmark">Benchmark menu</a>
+        <a className="btn" download={`redline-benchmark-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`} href={`data:application/json;charset=utf-8,${encodeURIComponent(json)}`}>
           Download JSON
         </a>
       </div>

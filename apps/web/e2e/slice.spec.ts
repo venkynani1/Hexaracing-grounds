@@ -26,3 +26,18 @@ test('slice: loads, renders, touch drives the car, weather toggles, acceptance r
   expect(report.report.textureMemMB).toBeLessThan(64);
   expect(errors).toEqual([]);
 });
+
+test('benchmark: launcher (offline) → car+road, low, 3-min autopilot loads the real renderer with live FPS/frame time', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.goto('/benchmark');
+  await expect(page.getByTestId('benchmark-launcher')).toContainText('Offline test mode');
+  await page.getByTestId('bench-scene-A').check();
+  await page.getByTestId('bench-q-low').check();
+  await page.getByTestId('bench-mode-auto3').check();
+  await expect(page.getByTestId('bench-start')).toHaveAttribute('href', '/benchmark?run=1&bench=A&rain=0&q=low&accept=3&auto=1');
+  await page.getByTestId('bench-start').click();
+  await expect(page.getByTestId('slice-loading')).toHaveClass(/done/, { timeout: 180_000 });
+  await expect(page.locator('.rh-tag')).toContainText('Offline benchmark · car + road');
+  await expect(page.getByTestId('frametime')).toContainText('ms');
+  await expect.poll(async () => Number(await page.getByTestId('fps').getAttribute('data-fps')), { timeout: 20_000 }).toBeGreaterThan(0);
+});
