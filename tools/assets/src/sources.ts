@@ -106,7 +106,7 @@ export const SOURCES: AssetSource[] = [
     modifications: 'Resized, WebP.',
     usage: 'Verges and open ground.',
   },
-  ...(['Facade006', 'Facade019A', 'Facade018A', 'Facade001'] as const).map(
+  ...(['Facade006', 'Facade019A', 'Facade018A', 'Facade001', 'Facade020A'] as const).map(
     (id): AssetSource => ({
       id,
       kind: 'texture',

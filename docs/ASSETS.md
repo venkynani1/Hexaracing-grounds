@@ -18,6 +18,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | ambientCG Facade019A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade019A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | ambientCG Facade018A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade018A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | ambientCG Facade001 | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade001 | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
+| ambientCG Facade020A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade020A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | Kloofendal 48d Partly Cloudy (Pure Sky) | hdri | Greg Zaal (original), Jarod Guest (sky edits) — Poly Haven | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | 1k HDR used for image-based lighting/reflections; 2k HDR decoded + tonemapped (ACES) to a WebP sky dome (pure sky — no terrain). | Sky, ambient light and reflections on paint/glass/wet roads. |
 | Concrete Road Barrier | prop | Amal Kumar (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete_road_barrier | Simplified, textures resized, WebP, single GLB. | Median barriers on divided roads (OMR) and Route Lockdown closures. |
 | Babylon.js KTX2 decoder + Basis/ETC1S transcoder + zstd (WASM) | runtime | Babylon.js contributors; Binomial LLC (basis_universal); Meta (zstd) | [Apache-2.0](https://github.com/BabylonJS/Babylon.js/blob/master/license.md) | https://www.npmjs.com/package/babylonjs-ktx2decoder | None — self-hosted so event day does not depend on a third-party CDN. | Transcodes KTX2/Basis textures to the GPU-native format of each device (ETC2/ASTC on Android, BC on desktop). |
@@ -68,6 +69,8 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/tex/facade018a_diff.webp` | 150 |  |
 | `public/assets/tex/facade019a_diff.ktx2` | 129 |  |
 | `public/assets/tex/facade019a_diff.webp` | 163 |  |
+| `public/assets/tex/facade020a_diff.ktx2` | 144 |  |
+| `public/assets/tex/facade020a_diff.webp` | 174 |  |
 | `public/assets/tex/grass_diff.ktx2` | 52 |  |
 | `public/assets/tex/grass_diff.webp` | 45 |  |
 | `public/assets/tex/leafygrass_diff.ktx2` | 207 |  |
@@ -99,7 +102,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/veg/palm_dual_lod1.glb` | 104 | 940 → 592 |
 | `public/assets/veg/palm_straight_lod0.glb` | 285 | 940 → 940 |
 | `public/assets/veg/palm_straight_lod1.glb` | 104 | 940 → 596 |
-| **total** | **11051** | |
+| **total** | **11369** | |
 
 ## Source pins (sha256)
 
@@ -133,3 +136,4 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 - `3td-tropical/pack.zip` — `32c9a3fcf2dea6e8094742c08b9dcc59cdfd0d6806b0906541eecc0bcf0f76ec`
 - `leafy_grass/leafy_grass_diff_1k.jpg` — `cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a`
 - `ajan-bus/pack.zip` — `88c6c178a7334263bac319b6a20531c7911e65e566a39dd1797044485d0f75f1`
+- `Facade020A/Facade020A_1K-JPG.zip` — `99d4a83fbd19dd9e12bd5bf8a3d73ac3628bf27a9c083b2644bc43cb88cabc73`

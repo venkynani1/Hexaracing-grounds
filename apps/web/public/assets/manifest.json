@@ -121,6 +121,14 @@
       "kb": 163
     },
     {
+      "path": "tex/facade020a_diff.ktx2",
+      "kb": 144
+    },
+    {
+      "path": "tex/facade020a_diff.webp",
+      "kb": 174
+    },
+    {
       "path": "tex/grass_diff.ktx2",
       "kb": 52
     },
@@ -245,7 +253,7 @@
       "kb": 104
     }
   ],
-  "totalKB": 11051,
+  "totalKB": 11369,
   "meshes": {
     "cars/car_hero.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",

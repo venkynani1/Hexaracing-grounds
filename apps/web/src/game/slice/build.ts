@@ -7,7 +7,7 @@
  * Built ONCE, bounded, merged per material into a few spatial chunks; lighting baked into vertex colours
  * (bake.ts). Buildings are exactly the shared procedural collision boxes (server-consistent), dressed as modules.
  */
-import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VertexData, type Scene } from '@babylonjs/core';
+import { Color3, DynamicTexture, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VertexData, type Scene } from '@babylonjs/core';
 import { createRng, deHeading, deStop, edgesNear, lanePoint, type Building, type ProceduralBuildings, type RoadNetwork, type WorldMap } from '@redline/shared';
 import { tiledCompressed } from '../render/assets';
 import { bakeVertexColors, OccluderIndex, type Occluder } from './bake';
@@ -426,14 +426,21 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
       // IT tower: 2-storey stone podium, glass curtain wall above with spandrel bands, roof crown + plant room
       const podium = 7;
       g('concrete', b.x, b.z).box(b.x, b.z, b.w, b.d, -0.1, podium, rot, 6, 7, [0.9, 0.88, 0.84], g('concrete', b.x, b.z), roofC, 2);
-      const mat = r2.next() < 0.5 ? 'glassA' : 'glassB';
-      g(mat, b.x, b.z).box(b.x, b.z, b.w - 0.6, b.d - 0.6, podium, b.h, rot, 13, 13, [1, 1, 1], g('concrete', b.x, b.z), roofC, Math.ceil((b.h - podium) / 6));
+      const q = r2.next();
+      const mat = q < 0.38 ? 'glassA' : q < 0.72 ? 'glassB' : 'office2';
+      // per-building tint (glass tone / weathering) so repeated facades don't read as clones
+      const tw = 0.88 + r2.next() * 0.2;
+      const tint: RGB = [tw * (0.96 + r2.next() * 0.08), tw, tw * (0.95 + r2.next() * 0.1)];
+      g(mat, b.x, b.z).box(b.x, b.z, b.w - 0.6, b.d - 0.6, podium, b.h, rot, mat === 'office2' ? 12 : 13, mat === 'office2' ? 12 : 13, tint, g('concrete', b.x, b.z), roofC, Math.ceil((b.h - podium) / 6));
       for (let y = podium + 3.6; y < b.h - 1; y += 3.6) g('concrete', b.x, b.z).box(b.x, b.z, b.w - 0.45, b.d - 0.45, y, y + 0.35, rot, 6, 7, [0.92, 0.92, 0.92]);
       g('concrete', b.x, b.z).box(b.x, b.z, b.w - 0.4, b.d - 0.4, b.h, b.h + 1.4, rot, 6, 7, [0.93, 0.93, 0.93], g('concrete', b.x, b.z), roofC);
       g('concrete', b.x, b.z).box(b.x, b.z, b.w * 0.35, b.d * 0.35, b.h + 1.4, b.h + 4.5, rot, 6, 7, [0.85, 0.85, 0.83], g('concrete', b.x, b.z), roofC);
     } else if (b.h >= 14) {
-      const mat = r2.next() < 0.6 ? 'office' : 'apartment';
-      g(mat, b.x, b.z).box(b.x, b.z, b.w, b.d, -0.1, b.h, rot, mat === 'office' ? 10 : 13, mat === 'office' ? 10 : 13, [1, 1, 1], g('concrete', b.x, b.z), roofC, Math.ceil(b.h / 4));
+      const q = r2.next();
+      const mat = q < 0.4 ? 'office' : q < 0.7 ? 'office2' : 'apartment';
+      const tw = 0.85 + r2.next() * 0.22;
+      const tint: RGB = [tw * (0.95 + r2.next() * 0.1), tw, tw * (0.93 + r2.next() * 0.1)];
+      g(mat, b.x, b.z).box(b.x, b.z, b.w, b.d, -0.1, b.h, rot, mat === 'apartment' ? 13 : 10, mat === 'apartment' ? 13 : 10, tint, g('concrete', b.x, b.z), roofC, Math.ceil(b.h / 4));
       for (let y = 3.3; y < b.h - 1; y += 3.3) g('concrete', b.x, b.z).box(b.x, b.z, b.w + 0.5, b.d + 0.5, y, y + 0.22, rot, 6, 7, [0.9, 0.89, 0.86]);
       g('concrete', b.x, b.z).box(b.x, b.z, b.w + 0.1, b.d + 0.1, b.h, b.h + 1.0, rot, 6, 7, [0.9, 0.9, 0.88], g('concrete', b.x, b.z), roofC);
       if (r2.next() < 0.6) tanks.push({ x: b.x + (r2.next() - 0.5) * b.w * 0.5, z: b.z + (r2.next() - 0.5) * b.d * 0.5, y: b.h + 1 });
@@ -656,6 +663,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     glassA: tiledTex(scene, 'facade019a_diff.webp'),
     glassB: tiledTex(scene, 'facade001_diff.webp'),
     office: tiledTex(scene, 'facade006_diff.webp'),
+    office2: tiledTex(scene, 'facade020a_diff.webp'),
     apartment: tiledTex(scene, 'facade018a_diff.webp'),
   };
   const plasterTex = textTexture(scene, 256, 256, (c) => {
@@ -758,6 +766,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     glassA: unlit(scene, 's-glassA', T.glassA),
     glassB: unlit(scene, 's-glassB', T.glassB),
     office: unlit(scene, 's-office', T.office),
+    office2: unlit(scene, 's-office2', T.office2),
     apartment: unlit(scene, 's-apartment', T.apartment),
     plaster: unlit(scene, 's-plaster', plasterTex),
     plaster2: unlit(scene, 's-plaster2', T.concrete, new Color3(1, 0.97, 0.9)),
@@ -919,6 +928,29 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     setWet(wet: boolean) {
       if (wet === wetNow) return;
       wetNow = wet;
+      // Lightweight wet-road reflections: sky (environment cube) reflected on asphalt/pavers/paint with a
+      // Fresnel falloff — strong at grazing angles (far road), faint underfoot. One cube sample per road pixel;
+      // no reflection probe / extra render pass.
+      const env = scene.environmentTexture;
+      for (const k of ['asphalt', 'pavers', 'paint', 'kerb'] as const) {
+        const m = mats[k]!;
+        m.unfreeze();
+        if (wet && env) {
+          m.reflectionTexture = env;
+          m.reflectionTexture.level = k === 'asphalt' ? 0.16 : 0.09;
+          // Babylon: leftColor = facing the camera, rightColor = grazing → reflect mostly at grazing angles
+          const f = new FresnelParameters();
+          f.leftColor = Color3.Black();
+          f.rightColor = Color3.White();
+          f.bias = 0.0;
+          f.power = 3;
+          m.reflectionFresnelParameters = f;
+        } else {
+          m.reflectionTexture = null;
+          m.reflectionFresnelParameters = null as never;
+        }
+        m.freeze();
+      }
       // Overcast monsoon light: re-use the dry bake scaled toward the sky colour (no re-bake, no stall).
       for (const [m, b] of baked) {
         let w = wetCache.get(m);

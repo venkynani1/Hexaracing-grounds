@@ -146,7 +146,7 @@ async function buildTextures() {
   await tex(c('concrete', 'concrete_diff_1k.jpg'), 'concrete_diff.webp', 512);
   await tex(c('sparse_grass', 'sparse_grass_diff_1k.jpg'), 'grass_diff.webp', 512);
   await tex(c('leafy_grass', 'leafy_grass_diff_1k.jpg'), 'leafygrass_diff.webp', 1024);
-  for (const id of ['Facade006', 'Facade019A', 'Facade018A', 'Facade001']) {
+  for (const id of ['Facade006', 'Facade019A', 'Facade018A', 'Facade001', 'Facade020A']) {
     const dir = join(CACHE, id, 'x');
     mkdirSync(dir, { recursive: true });
     execFileSync('unzip', ['-oq', join(CACHE, id, `${id}_1K-JPG.zip`), '-d', dir]);
