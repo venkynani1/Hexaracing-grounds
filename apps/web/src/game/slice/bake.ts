@@ -143,7 +143,7 @@ export async function bakeVertexColors(
     const ny = nrm[i * 3 + 1]!;
     const nz = nrm[i * 3 + 2]!;
     const ndl = Math.max(0, nx * L.x + ny * L.y + nz * L.z);
-    const sv = ndl > 0 ? sunVisible(idx, x + nx * 0.05, y + ny * 0.05, z + nz * 0.05) : 0;
+    const sv = ndl > 0 ? sunVisible(idx, x + nx * 0.25, y + ny * 0.25, z + nz * 0.25) : 0;
     const ao = aoAt(x, y, z, ny);
     const hemi = 0.8 + 0.2 * ny;
     for (let c = 0; c < 3; c++) {

@@ -337,4 +337,89 @@ export async function buildVegetation(only?: string[]) {
   return stats;
 }
 
-if (process.argv[1] && /vegetation\.ts$/.test(process.argv[1])) await buildVegetation(process.argv.slice(2).length ? process.argv.slice(2) : undefined);
+
+
+
+/* ------------------------------------------------------------------ vehicles (traffic props) */
+
+export interface VehicleSpec {
+  id: string;
+  source: string;
+  dir: string;
+  file: string;
+  /** target footprint (shared sim TRAFFIC_TYPES) */
+  length: number;
+  width: number;
+  /** material name → new base colour (linear) */
+  repaint: Record<string, [number, number, number]>;
+  /** material whose centroid marks the FRONT */
+  front: string;
+  upAxis: 'y' | 'z';
+}
+
+export const VEHICLES: VehicleSpec[] = [
+  { id: 'bus', source: 'ajan-bus', dir: 'ajan-bus/x/OBJ', file: 'BUS.obj', length: 11, width: 2.5, front: 'FrontLights', upAxis: 'y', repaint: { Body: [0.62, 0.06, 0.05], Metal: [0.75, 0.75, 0.72] } },
+];
+
+async function buildVehicle(v: VehicleSpec, lod: 0 | 1) {
+  unpack(v.source);
+  const doc = await convert({ id: v.id, source: v.source, dir: v.dir, file: v.file, height: 1, kind: 'shrub', leafTex: 0 });
+  const mesh = flattenToRoot(doc);
+  await doc.transform(prune({ keepAttributes: true }), dedup());
+  const prims = mesh.listPrimitives();
+  if (v.upAxis === 'z') for (const p of prims) transformPrimitive(p, [1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1] as never);
+  const centroid = (name: string) => {
+    let n = 0;
+    const c = [0, 0, 0];
+    const t = [0, 0, 0];
+    for (const p of prims) {
+      if (p.getMaterial()?.getName() !== name) continue;
+      const a = p.getAttribute('POSITION')!;
+      for (let i = 0; i < a.getCount(); i++) (a.getElement(i, t), (c[0]! += t[0]!), (c[1]! += t[1]!), (c[2]! += t[2]!), n++);
+    }
+    return n ? c.map((x) => x / n) : null;
+  };
+  const all0 = bbox(prims);
+  const mid = [0, 1, 2].map((k) => (all0.min[k]! + all0.max[k]!) / 2);
+  const f = centroid(v.front) ?? [mid[0]!, 0, all0.max[2]!];
+  const yaw = Math.atan2(f[0]! - mid[0]!, f[2]! - mid[2]!);
+  const c = Math.cos(-yaw);
+  const s = Math.sin(-yaw);
+  for (const p of prims) transformPrimitive(p, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1] as never);
+  const all = bbox(prims);
+  const sz = v.length / (all.max[2]! - all.min[2]!);
+  const sx = v.width / (all.max[0]! - all.min[0]!);
+  const sy = (sx + sz) / 2;
+  const cx = (all.min[0]! + all.max[0]!) / 2;
+  const cz = (all.min[2]! + all.max[2]!) / 2;
+  for (const p of prims) transformPrimitive(p, [sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, -cx * sx, -all.min[1]! * sy, -cz * sz, 1] as never);
+  for (const m of doc.getRoot().listMaterials()) {
+    const r = v.repaint[m.getName()];
+    if (r) m.setBaseColorFactor([r[0], r[1], r[2], 1]);
+    m.setMetallicFactor(0).setRoughnessFactor(0.6);
+  }
+  for (const p of mesh.listPrimitives()) for (const sem of p.listSemantics()) if (!['POSITION', 'NORMAL'].includes(sem)) p.setAttribute(sem, null);
+  await doc.transform(weld({}), joinMeshes({ keepNamed: false }));
+  if (lod === 1) await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio: 0.25, error: 0.01 }));
+  await doc.transform(prune({ keepAttributes: true }));
+  mkdirSync(join(OUT, '..', 'cars'), { recursive: true });
+  const out = join(OUT, '..', 'cars', `${v.id}_lod${lod}.glb`);
+  await io.write(out, doc);
+  const tris = doc.getRoot().listMeshes().reduce((a, m) => a + m.listPrimitives().reduce((k, p) => k + (p.getIndices()?.getCount() ?? 0) / 3, 0), 0);
+  return { tris: Math.round(tris), kb: Math.round(readFileSync(out).length / 1024) };
+}
+
+export async function buildVehicles() {
+  await MeshoptSimplifier.ready;
+  const stats: Record<string, unknown> = {};
+  for (const v of VEHICLES) {
+    stats[v.id] = { lod0: await buildVehicle(v, 0), lod1: await buildVehicle(v, 1) };
+    console.log(v.id, JSON.stringify(stats[v.id]));
+  }
+  return stats;
+}
+
+if (process.argv[1] && /vegetation\.ts$/.test(process.argv[1])) {
+  if (process.argv[2] === 'vehicles') await buildVehicles();
+  else await buildVegetation(process.argv.slice(2).length ? process.argv.slice(2) : undefined);
+}

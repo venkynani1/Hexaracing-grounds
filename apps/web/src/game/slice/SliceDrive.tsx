@@ -247,7 +247,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
           spawn.push(id * 2);
           if (!e.oneway) spawn.push(id * 2 + 1);
         }
-        traffic = new TrafficSystem(net, { seed: 'slice', count: 6, spawnDe: cor.path, onlyType: 'car' });
+        traffic = new TrafficSystem(net, { seed: 'slice', count: 8, spawnDe: cor.path, mix: { car: 0.7, bus: 0.3 } });
         void spawn;
         readyAt = performance.now();
         setLoad({ p: 1, label: 'Ready' });
@@ -287,9 +287,10 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
             const dx = s.x - t.x;
             const dz = s.z - t.z;
             const d = Math.hypot(dx, dz);
-            if (d > 0.01 && d < 2.4) {
-              s.x += (dx / d) * (2.4 - d);
-              s.z += (dz / d) * (2.4 - d);
+            const rr = t.type === 'bus' ? 4.2 : 2.4;
+            if (d > 0.01 && d < rr) {
+              s.x += (dx / d) * (rr - d);
+              s.z += (dz / d) * (rr - d);
               s.vx *= 0.6;
               s.vz *= 0.6;
             }
@@ -340,7 +341,9 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
         game.setRain(rainRef.current);
         game.updateMe({ x: pose.x, z: pose.z, heading: pose.heading, braking: inp.brake > 0.1, steer: inp.steer, speed: fwd, nitro: inp.nitro && s.nitro > 0, slip: Math.abs(lat) + (inp.handbrake && fwd > 5 ? 3 : 0) });
         game.updateCamera(pose, Math.abs(fwd), frameDt);
-        game.updateTraffic(traffic!.poses().map((t) => ({ id: t.id, x: t.x, z: t.z, heading: t.heading, braking: t.speed < 2, color: TRAFFIC_COLOURS[t.id % TRAFFIC_COLOURS.length]! })));
+        const poses = traffic!.poses();
+        game.updateTraffic(poses.filter((t) => t.type === 'car').map((t) => ({ id: t.id, x: t.x, z: t.z, heading: t.heading, braking: t.speed < 2, color: TRAFFIC_COLOURS[t.id % TRAFFIC_COLOURS.length]! })));
+        game.updateBuses(poses.filter((t) => t.type !== 'car'));
         game.updateSignals(simMs);
         game.scene.render();
         game.adaptResolution();

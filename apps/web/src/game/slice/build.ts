@@ -73,7 +73,8 @@ class G {
   /** vertical wall a→b, normal = right of a→b; vertical subdivision for baked AO/shadows */
   wall(ax: number, az: number, bx: number, bz: number, y0: number, y1: number, tu: number, tv: number, c: RGB, u0 = 0, vsteps = 1, hsteps = 1) {
     const L = Math.hypot(bx - ax, bz - az) || 1;
-    const n: [number, number, number] = [(bz - az) / L, 0, -(bx - ax) / L];
+    // normal of the FRONT (visible, non-culled) face for the winding below: left of a→b
+    const n: [number, number, number] = [-(bz - az) / L, 0, (bx - ax) / L];
     const base = this.pos.length / 3;
     for (let i = 0; i <= hsteps; i++)
       for (let j = 0; j <= vsteps; j++) {
@@ -511,7 +512,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
             const wg = g('concrete', x0, z0);
             wg.wall(x0, z0, x1, z1, 0, 1.8, 3, 1.8, wc, 0, 2, Math.max(1, Math.round((a1 - a0) / 3)));
             wg.wall(x1, z1, x0, z0, 0, 1.8, 3, 1.8, wc, 0, 2, Math.max(1, Math.round((a1 - a0) / 3)));
-            addOcc({ kind: 'box', x: (x0 + x1) / 2, z: (z0 + z1) / 2, hw: (a1 - a0) / 2, hd: 0.1, y0: 0, y1: 1.8, rot: yaw + Math.PI / 2 });
+            addOcc({ kind: 'box', x: (x0 + x1) / 2, z: (z0 + z1) / 2, hw: (a1 - a0) / 2, hd: 0.06, y0: 0, y1: 1.8, rot: yaw + Math.PI / 2 });
           }
           // campus planting behind the wall: 1–3 trees, a few shrubs, grass
           const nT = 1 + Math.floor(lr.next() * 3);
@@ -793,7 +794,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
       }
       return ao;
     }
-    return 0.6 + 0.4 * Math.min(1, y / 3);
+    return 0.72 + 0.28 * Math.min(1, y / 2);
   };
   const meshes: Mesh[] = [];
   let verts = 0;

@@ -71,6 +71,8 @@ export interface TrafficOptions {
   signal?: SignalFn;
   /** Spawn only this vehicle type (visual vertical slice). Default: the seeded mix. */
   onlyType?: TrafficType;
+  /** Custom spawn mix (weights per type, visual vertical slice). Default: the seeded server mix. */
+  mix?: Partial<Record<TrafficType, number>>;
 }
 
 const IDM = { minGap: 2.5, headway: 1.2, comfortDecel: 3, stopDecel: 4 };
@@ -90,11 +92,13 @@ export class TrafficSystem {
     this.exclude = new Set(opts.excludeDe ?? []);
     this.spawnPool = this.slots(opts.spawnDe);
     this.onlyType = opts.onlyType;
+    this.mix = opts.mix;
     this.spawn(opts.count);
   }
 
   private readonly exclude: Set<number>;
   private readonly onlyType: TrafficType | undefined;
+  private readonly mix: Partial<Record<TrafficType, number>> | undefined;
   /** Closed edge ids (Route Lockdown): traffic never turns into them. */
   blockedEdges = new Set<number>();
   /** Per-edge speed multiplier (Traffic Shock). */
@@ -124,7 +128,15 @@ export class TrafficSystem {
     }
     for (let i = 0; i < Math.min(count, slots.length); i++) {
       const r = this.rng.next();
-      const type: TrafficType = this.onlyType ?? (r < 0.6 ? 'car' : r < 0.8 ? 'motorcycle' : r < 0.9 ? 'bus' : 'truck');
+      let type: TrafficType = this.onlyType ?? (r < 0.6 ? 'car' : r < 0.8 ? 'motorcycle' : r < 0.9 ? 'bus' : 'truck');
+      if (this.mix) {
+        const entries = Object.entries(this.mix) as [TrafficType, number][];
+        let acc = r * entries.reduce((a, [, w]) => a + w, 0);
+        for (const [t, w] of entries) if ((acc -= w) <= 0) {
+          type = t;
+          break;
+        }
+      }
       const sl = slots[i]!;
       this.agents.push({ id: this.nextId++, type, de: sl.de, lane: sl.lane, laneF: sl.lane, s: sl.s, speed: 0, cruise: 0.85 + this.rng.next() * 0.2, conn: null, blocked: false });
     }

@@ -21,6 +21,7 @@ import {
   Scene,
   StandardMaterial,
   Texture,
+  TransformNode,
   UniversalCamera,
   Vector3,
   type AbstractMesh,
@@ -155,6 +156,7 @@ export class SliceScene {
     Object.assign(this.stats, { buildMs: this.world.stats.buildMs, bakeMs: this.world.stats.bakeMs, vertices: this.world.stats.vertices, triangles: this.world.stats.triangles, staticMeshes: this.world.stats.meshes });
     this.buildSignals();
     this.buildCarShadowTex();
+    await this.loadBuses();
     onProgress(0.8, 'Planting trees');
     const noveg = new URLSearchParams(location.search).get('noveg') === '1'; // measurement ablation only
     this.veg = noveg ? null : new Vegetation(scene);
@@ -294,6 +296,71 @@ export class SliceScene {
 
   updateTraffic(cars: (CarPose & { id: number; color: Color3 })[]) {
     this.fleet?.update(cars, this.camera.position, 0, performance.now());
+  }
+
+  /** Licensed city buses (CC0 "3D Bus" by ajanhallinta): instanced LOD0 < 45 m, LOD1 beyond. */
+  private busTpl: [Mesh[], Mesh[]] = [[], []];
+  private buses = new Map<number, { root: TransformNode; lods: TransformNode[]; lod: number }>();
+  private async loadBuses() {
+    for (const lod of [0, 1] as const) {
+      const c = await loadContainer(this.scene, `cars/bus_lod${lod}.glb`);
+      if (!c) continue;
+      c.addAllToScene();
+      for (const m of c.meshes) {
+        if (!(m instanceof Mesh) || !m.getTotalVertices()) continue;
+        m.setParent(null);
+        m.computeWorldMatrix(true);
+        m.bakeCurrentTransformIntoVertices();
+        m.setEnabled(false);
+        m.isPickable = false;
+        this.busTpl[lod].push(m);
+      }
+      for (const m of c.meshes) if (!(m instanceof Mesh) || !m.getTotalVertices()) m.dispose();
+    }
+  }
+  updateBuses(list: { id: number; x: number; z: number; heading: number }[]) {
+    const seen = new Set<number>();
+    const cp = this.camera.position;
+    for (const b of list) {
+      seen.add(b.id);
+      let e = this.buses.get(b.id);
+      if (!e) {
+        const root = new TransformNode(`bus-${b.id}`, this.scene);
+        const lods = this.busTpl.map((tpl, i) => {
+          const n = new TransformNode(`bus-${b.id}-lod${i}`, this.scene);
+          n.parent = root;
+          for (const t of tpl) {
+            const inst = t.createInstance(`${t.name}-${b.id}`);
+            inst.parent = n;
+          }
+          return n;
+        });
+        if (this.shadowTex) {
+          const sh = MeshBuilder.CreateGround(`bus-shadow-${b.id}`, { width: 3.2, height: 12.5 }, this.scene);
+          sh.material = this.carShadowMat();
+          sh.position.y = 0.04;
+          sh.parent = root;
+        }
+        e = { root, lods, lod: -1 };
+        this.buses.set(b.id, e);
+      }
+      e.root.position.set(b.x, 0, b.z);
+      e.root.rotation.y = b.heading;
+      const want = Math.hypot(b.x - cp.x, b.z - cp.z) < 45 ? 0 : 1;
+      if (want !== e.lod) (e.lods.forEach((n, i) => n.setEnabled(i === want)), (e.lod = want));
+    }
+    for (const [id, e] of this.buses) if (!seen.has(id)) (e.root.dispose(), this.buses.delete(id));
+  }
+  private shadowMatShared: StandardMaterial | null = null;
+  private carShadowMat() {
+    if (this.shadowMatShared) return this.shadowMatShared;
+    const m = new StandardMaterial('bus-shadow', this.scene);
+    m.diffuseTexture = this.shadowTex;
+    m.useAlphaFromDiffuseTexture = true;
+    m.disableLighting = true;
+    m.zOffset = -2;
+    m.freeze();
+    return (this.shadowMatShared = m);
   }
 
   setRain(r: boolean) {

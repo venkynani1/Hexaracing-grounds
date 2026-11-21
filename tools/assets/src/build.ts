@@ -216,7 +216,8 @@ for (const lod of ['hero', 'lod1', 'lod2', 'lod3'] as const) {
 }
 stats['props/barrier.glb'] = await buildProp('concrete_road_barrier', 'barrier.glb', 0.02);
 await buildTextures();
-const { buildVegetation } = await import('./vegetation');
+const { buildVegetation, buildVehicles } = await import('./vegetation');
+await buildVehicles();
 const vegStats = await buildVegetation();
 for (const [id, v] of Object.entries(vegStats)) {
   stats[`veg/${id}_lod0.glb`] = { trisBefore: v.lod0, tris: v.lod0 };

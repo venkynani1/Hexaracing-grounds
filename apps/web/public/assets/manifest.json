@@ -1,6 +1,14 @@
 {
   "files": [
     {
+      "path": "cars/bus_lod0.glb",
+      "kb": 446
+    },
+    {
+      "path": "cars/bus_lod1.glb",
+      "kb": 174
+    },
+    {
       "path": "cars/car_hero.glb",
       "kb": 2532
     },
@@ -146,67 +154,67 @@
     },
     {
       "path": "veg/bush_01_lod0.glb",
-      "kb": 91
+      "kb": 79
     },
     {
       "path": "veg/bush_01_lod1.glb",
-      "kb": 37
+      "kb": 34
     },
     {
       "path": "veg/bush_04_lod0.glb",
-      "kb": 99
+      "kb": 78
     },
     {
       "path": "veg/bush_04_lod1.glb",
-      "kb": 37
+      "kb": 32
     },
     {
       "path": "veg/bush_05_lod0.glb",
-      "kb": 136
+      "kb": 99
     },
     {
       "path": "veg/bush_05_lod1.glb",
-      "kb": 51
+      "kb": 42
     },
     {
       "path": "veg/cecropia_lod0.glb",
-      "kb": 325
+      "kb": 326
     },
     {
       "path": "veg/cecropia_lod1.glb",
-      "kb": 244
+      "kb": 149
     },
     {
       "path": "veg/copal_lod0.glb",
-      "kb": 280
+      "kb": 273
     },
     {
       "path": "veg/copal_lod1.glb",
-      "kb": 207
+      "kb": 138
     },
     {
       "path": "veg/ficus_lod0.glb",
-      "kb": 741
+      "kb": 320
     },
     {
       "path": "veg/ficus_lod1.glb",
-      "kb": 259
+      "kb": 128
     },
     {
       "path": "veg/grass_lod0.glb",
-      "kb": 33
+      "kb": 26
     },
     {
       "path": "veg/grass_lod1.glb",
-      "kb": 12
+      "kb": 9
     },
     {
       "path": "veg/hedge_long_lod0.glb",
-      "kb": 245
+      "kb": 195
     },
     {
       "path": "veg/hedge_long_lod1.glb",
-      "kb": 65
+      "kb": 50
     },
     {
       "path": "veg/manifest.json",
@@ -214,30 +222,30 @@
     },
     {
       "path": "veg/palm_bend_lod0.glb",
-      "kb": 449
+      "kb": 285
     },
     {
       "path": "veg/palm_bend_lod1.glb",
-      "kb": 149
+      "kb": 104
     },
     {
       "path": "veg/palm_dual_lod0.glb",
-      "kb": 449
+      "kb": 285
     },
     {
       "path": "veg/palm_dual_lod1.glb",
-      "kb": 149
+      "kb": 104
     },
     {
       "path": "veg/palm_straight_lod0.glb",
-      "kb": 449
+      "kb": 285
     },
     {
       "path": "veg/palm_straight_lod1.glb",
-      "kb": 149
+      "kb": 104
     }
   ],
-  "totalKB": 11942,
+  "totalKB": 11051,
   "meshes": {
     "cars/car_hero.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",

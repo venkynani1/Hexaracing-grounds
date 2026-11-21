@@ -68,13 +68,13 @@ export class Geo {
   /** Vertical wall from (ax,az)→(bx,bz), y0..y1, outward normal = right of a→b. UVs in metres / tile. */
   wall(ax: number, az: number, bx: number, bz: number, y0: number, y1: number, tileU: number, tileV: number, u0 = 0, c?: [number, number, number]) {
     const L = Math.hypot(bx - ax, bz - az) || 1;
-    const nx = (bz - az) / L;
-    const nz = -(bx - ax) / L;
+    // normal of the FRONT (visible) face for the winding below: left of a→b
+    const nx = -(bz - az) / L;
+    const nz = (bx - ax) / L;
     const a = this.v(ax, y0, az, nx, 0, nz, u0, y0 / tileV, c);
     const b = this.v(bx, y0, bz, nx, 0, nz, u0 + L / tileU, y0 / tileV, c);
     const cc = this.v(bx, y1, bz, nx, 0, nz, u0 + L / tileU, y1 / tileV, c);
     const d = this.v(ax, y1, az, nx, 0, nz, u0, y1 / tileV, c);
-    // Front face = the side the normal points to.
     this.idx.push(a, d, cc, a, cc, b);
     return L;
   }

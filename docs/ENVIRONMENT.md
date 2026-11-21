@@ -84,8 +84,8 @@ foliage LOD0 distances, grass density, impostor distance, render-scale range.
 ## 4. Remaining visual defects
 1. Broadleaf species are not Chennai-native (neem / rain tree / Indian almond / gulmohar models needed).
 2. Buildings are textured boxes on procedural lots; facades repeat.
-3. Compound walls render dark on their shaded face.
-4. No vehicle variety: no licensed buses, autos, motorcycles (acquisition list in docs/ASSET_ACQUISITION.md).
+3. ~~Compound walls render dark~~ — fixed: `G.wall` stored the normal of the back face (winding mismatch), so every wall and facade was baked as if facing the other way. Fixed in the slice and in the live renderer (`render/geo.ts`).
+4. Buses: licensed CC0 "3D Bus" (ajanhallinta) in the slice traffic (14.5k / 4.7k tris, generic red livery). Auto-rickshaws: still missing — candidates found on Sketchfab (CC BY) but downloading needs a Sketchfab API token. Motorcycles still missing.
 5. No wet-road reflections (only darkening + spray); no puddles.
 6. Impostors are single-view cards (visible when orbiting closely; fine from the chase camera).
 7. Grass tufts are cross-cards; up close they read as cards.

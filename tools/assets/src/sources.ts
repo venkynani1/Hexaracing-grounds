@@ -216,4 +216,15 @@ export const SOURCES: AssetSource[] = [
     modifications: 'COLLADA→GLB (assimp), textures re-linked from the pack, scaled to real heights, merged bark/leaf, LOD1 + runtime impostor LOD2.',
     usage: 'Ficus/rain-tree-like roadside trees, broadleaf trees, additional palms.',
   },
+  {
+    id: 'ajan-bus',
+    kind: 'vehicle',
+    title: '3D Bus',
+    authors: 'ajanhallinta',
+    ...CC0,
+    page: 'https://opengameart.org/content/3d-bus',
+    files: [{ name: 'pack.zip', url: 'https://opengameart.org/sites/default/files/3DBus_by_ajanhallinta.zip' }],
+    modifications: 'OBJ→GLB (assimp), Z-up→Y-up, front aligned to +Z, scaled to the shared-sim bus footprint (11 × 2.5 m), body repainted in a generic city livery (no operator branding), LOD1 simplified.',
+    usage: 'City buses in traffic (slice).',
+  },
 ];
