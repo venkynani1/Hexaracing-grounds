@@ -145,6 +145,7 @@ async function buildTextures() {
   await tex(c('concrete_pavers_03', 'concrete_pavers_03_nor_gl_1k.jpg'), 'pavers_nor.webp', 512, 90);
   await tex(c('concrete', 'concrete_diff_1k.jpg'), 'concrete_diff.webp', 512);
   await tex(c('sparse_grass', 'sparse_grass_diff_1k.jpg'), 'grass_diff.webp', 512);
+  await tex(c('leafy_grass', 'leafy_grass_diff_1k.jpg'), 'leafygrass_diff.webp', 1024);
   for (const id of ['Facade006', 'Facade019A', 'Facade018A', 'Facade001']) {
     const dir = join(CACHE, id, 'x');
     mkdirSync(dir, { recursive: true });
@@ -215,6 +216,12 @@ for (const lod of ['hero', 'lod1', 'lod2', 'lod3'] as const) {
 }
 stats['props/barrier.glb'] = await buildProp('concrete_road_barrier', 'barrier.glb', 0.02);
 await buildTextures();
+const { buildVegetation } = await import('./vegetation');
+const vegStats = await buildVegetation();
+for (const [id, v] of Object.entries(vegStats)) {
+  stats[`veg/${id}_lod0.glb`] = { trisBefore: v.lod0, tris: v.lod0 };
+  stats[`veg/${id}_lod1.glb`] = { trisBefore: v.lod0, tris: v.lod1 };
+}
 
 const files: { path: string; kb: number }[] = [];
 const walk = (d: string) => {

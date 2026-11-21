@@ -12,6 +12,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | Clean Asphalt | texture | Dimitrios Savva (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/clean_asphalt | Resized, WebP. | Road surface (with procedural lane markings and wet-road variant). |
 | Concrete Pavers 03 | texture | Charlotte Baglioni (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete_pavers_03 | Resized, WebP. | Footpaths (interlocking pavers). |
 | Concrete | texture | Rob Tuytel (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete | Resized, WebP. | Kerbs, medians, building roofs and plinths. |
+| Leafy Grass | texture | Charlotte Baglioni (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/leafy_grass | Resized, WebP + KTX2. | Verges, median turf and open ground in the vertical slice. |
 | Sparse Grass | texture | Amal Kumar (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/sparse_grass | Resized, WebP. | Verges and open ground. |
 | ambientCG Facade006 | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade006 | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
 | ambientCG Facade019A | texture | Lennart Demes (ambientCG) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://ambientcg.com/view?id=Facade019A | Colour map extracted, resized, WebP. | Building facades (offices / IT parks / apartments). |
@@ -20,6 +21,11 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | Kloofendal 48d Partly Cloudy (Pure Sky) | hdri | Greg Zaal (original), Jarod Guest (sky edits) — Poly Haven | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | 1k HDR used for image-based lighting/reflections; 2k HDR decoded + tonemapped (ACES) to a WebP sky dome (pure sky — no terrain). | Sky, ambient light and reflections on paint/glass/wet roads. |
 | Concrete Road Barrier | prop | Amal Kumar (Poly Haven) | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://polyhaven.com/a/concrete_road_barrier | Simplified, textures resized, WebP, single GLB. | Median barriers on divided roads (OMR) and Route Lockdown closures. |
 | Babylon.js KTX2 decoder + Basis/ETC1S transcoder + zstd (WASM) | runtime | Babylon.js contributors; Binomial LLC (basis_universal); Meta (zstd) | [Apache-2.0](https://github.com/BabylonJS/Babylon.js/blob/master/license.md) | https://www.npmjs.com/package/babylonjs-ktx2decoder | None — self-hosted so event day does not depend on a third-party CDN. | Transcodes KTX2/Basis textures to the GPU-native format of each device (ETC2/ASTC on Android, BC on desktop). |
+| Free palm treeZ v3 (coconut palms: straight, bend, dual, dual-bend, trio) | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/free-palm-treez-v3 | OBJ→GLB, TGA→WebP, scaled to 9–14 m, merged bark/leaf, LOD1 (card thinning) + runtime impostor LOD2. | Coconut palms in the median and on verges. |
+| Bushes (5 shrubs) | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/bushes | OBJ→GLB, TGA→WebP, scaled, merged, LOD1. | Shrubs on verges, in front of compound walls and at the junction. |
+| Free Hedges | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/free-hedges | OBJ→GLB, TGA→WebP, scaled, merged. | Clipped hedges in the planted median. |
+| Grass Pack #01 | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/grass-pack-01 | OBJ→GLB, TGA→WebP, scaled. | Grass tufts on verges and median edges. |
+| 3TD Tropical Environment Pack v2.0 (Ceiba/ficus, Copal, Cecropia, palms, banana) | vegetation | Ron Kapaun / 3 Tier Digital Studios | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/3td-tropical-environment-pack-v20 | COLLADA→GLB (assimp), textures re-linked from the pack, scaled to real heights, merged bark/leaf, LOD1 + runtime impostor LOD2. | Ficus/rain-tree-like roadside trees, broadleaf trees, additional palms. |
 
 ## Original (made for this project, no third-party licence)
 
@@ -61,11 +67,36 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/tex/facade019a_diff.webp` | 163 |  |
 | `public/assets/tex/grass_diff.ktx2` | 52 |  |
 | `public/assets/tex/grass_diff.webp` | 45 |  |
+| `public/assets/tex/leafygrass_diff.ktx2` | 207 |  |
+| `public/assets/tex/leafygrass_diff.webp` | 322 |  |
 | `public/assets/tex/pavers_diff.ktx2` | 51 |  |
 | `public/assets/tex/pavers_diff.webp` | 43 |  |
 | `public/assets/tex/pavers_nor.ktx2` | 33 |  |
 | `public/assets/tex/pavers_nor.webp` | 27 |  |
-| **total** | **6755** | |
+| `public/assets/veg/bush_01_lod0.glb` | 91 | 556 → 556 |
+| `public/assets/veg/bush_01_lod1.glb` | 37 | 556 → 229 |
+| `public/assets/veg/bush_04_lod0.glb` | 99 | 500 → 500 |
+| `public/assets/veg/bush_04_lod1.glb` | 37 | 500 → 188 |
+| `public/assets/veg/bush_05_lod0.glb` | 136 | 880 → 880 |
+| `public/assets/veg/bush_05_lod1.glb` | 51 | 880 → 345 |
+| `public/assets/veg/cecropia_lod0.glb` | 325 | 2,034 → 2,034 |
+| `public/assets/veg/cecropia_lod1.glb` | 244 | 2,034 → 807 |
+| `public/assets/veg/copal_lod0.glb` | 280 | 2,849 → 2,849 |
+| `public/assets/veg/copal_lod1.glb` | 207 | 2,849 → 1,285 |
+| `public/assets/veg/ficus_lod0.glb` | 741 | 3,375 → 3,375 |
+| `public/assets/veg/ficus_lod1.glb` | 259 | 3,375 → 1,456 |
+| `public/assets/veg/grass_lod0.glb` | 33 | 4 → 4 |
+| `public/assets/veg/grass_lod1.glb` | 12 | 4 → 4 |
+| `public/assets/veg/hedge_long_lod0.glb` | 245 | 2,410 → 2,410 |
+| `public/assets/veg/hedge_long_lod1.glb` | 65 | 2,410 → 370 |
+| `public/assets/veg/manifest.json` | 2 |  |
+| `public/assets/veg/palm_bend_lod0.glb` | 449 | 940 → 940 |
+| `public/assets/veg/palm_bend_lod1.glb` | 149 | 940 → 592 |
+| `public/assets/veg/palm_dual_lod0.glb` | 449 | 940 → 940 |
+| `public/assets/veg/palm_dual_lod1.glb` | 149 | 940 → 592 |
+| `public/assets/veg/palm_straight_lod0.glb` | 449 | 940 → 940 |
+| `public/assets/veg/palm_straight_lod1.glb` | 149 | 940 → 596 |
+| **total** | **11942** | |
 
 ## Source pins (sha256)
 
@@ -92,3 +123,9 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 - `babylon-ktx2-decoder/msc_basis_transcoder.js` — `b8906bae7e55606aba070642eb3bce790a2b5aea774874e120e9fd41f7c7d60b`
 - `babylon-ktx2-decoder/msc_basis_transcoder.wasm` — `29becbf0eef2ce9f6d72109ad217704ec3799c432da0c26e3893b793ecab6bdc`
 - `babylon-ktx2-decoder/zstddec.wasm` — `67d12d34f82ef700ec3a3795a77590252858c70330908a87ed1e73efc268cb4b`
+- `nobiax-palms/pack.7z` — `3d50fc508d289fbe56254235955cf5c38c35ddba7064a3c7931a9852b3f8e98f`
+- `nobiax-bushes/pack.7z` — `54e60e712d7121b12096cd46508b68a9c49370f5a388fc70653baef583ce9325`
+- `nobiax-hedges/pack.7z` — `6e4433d228277234ac3b9f783491af7d8f250f143bf0b54906aae62af4599f59`
+- `nobiax-grass-01/pack.7z` — `0bbb1955dffd7c47baae1e5b91fad66140a16968f6e454c18220eaa0dda0be9c`
+- `3td-tropical/pack.zip` — `32c9a3fcf2dea6e8094742c08b9dcc59cdfd0d6806b0906541eecc0bcf0f76ec`
+- `leafy_grass/leafy_grass_diff_1k.jpg` — `cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a`

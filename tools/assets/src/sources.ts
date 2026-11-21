@@ -13,7 +13,7 @@ export interface SourceFile {
 
 export interface AssetSource {
   id: string;
-  kind: 'vehicle' | 'texture' | 'hdri' | 'prop' | 'runtime' | 'reference';
+  kind: 'vehicle' | 'texture' | 'hdri' | 'prop' | 'runtime' | 'reference' | 'vegetation';
   title: string;
   /** who made it (as credited by the source) */
   authors: string;
@@ -85,6 +85,17 @@ export const SOURCES: AssetSource[] = [
     usage: 'Kerbs, medians, building roofs and plinths.',
   },
   {
+    id: 'leafy_grass',
+    kind: 'texture',
+    title: 'Leafy Grass',
+    authors: 'Charlotte Baglioni (Poly Haven)',
+    ...CC0,
+    page: 'https://polyhaven.com/a/leafy_grass',
+    files: phTex('leafy_grass', [['diff', 'jpg']]),
+    modifications: 'Resized, WebP + KTX2.',
+    usage: 'Verges, median turf and open ground in the vertical slice.',
+  },
+  {
     id: 'sparse_grass',
     kind: 'texture',
     title: 'Sparse Grass',
@@ -149,5 +160,60 @@ export const SOURCES: AssetSource[] = [
     ],
     modifications: 'None — self-hosted so event day does not depend on a third-party CDN.',
     usage: 'Transcodes KTX2/Basis textures to the GPU-native format of each device (ETC2/ASTC on Android, BC on desktop).',
+  },
+  {
+    id: 'nobiax-palms',
+    kind: 'vegetation',
+    title: 'Free palm treeZ v3 (coconut palms: straight, bend, dual, dual-bend, trio)',
+    authors: 'Nobiax / Yughues',
+    ...CC0,
+    page: 'https://opengameart.org/content/free-palm-treez-v3',
+    files: [{ name: 'pack.7z', url: 'https://opengameart.org/sites/default/files/PACK%20V3_0.7z' }],
+    modifications: 'OBJ→GLB, TGA→WebP, scaled to 9–14 m, merged bark/leaf, LOD1 (card thinning) + runtime impostor LOD2.',
+    usage: 'Coconut palms in the median and on verges.',
+  },
+  {
+    id: 'nobiax-bushes',
+    kind: 'vegetation',
+    title: 'Bushes (5 shrubs)',
+    authors: 'Nobiax / Yughues',
+    ...CC0,
+    page: 'https://opengameart.org/content/bushes',
+    files: [{ name: 'pack.7z', url: 'https://opengameart.org/sites/default/files/bushes.7z' }],
+    modifications: 'OBJ→GLB, TGA→WebP, scaled, merged, LOD1.',
+    usage: 'Shrubs on verges, in front of compound walls and at the junction.',
+  },
+  {
+    id: 'nobiax-hedges',
+    kind: 'vegetation',
+    title: 'Free Hedges',
+    authors: 'Nobiax / Yughues',
+    ...CC0,
+    page: 'https://opengameart.org/content/free-hedges',
+    files: [{ name: 'pack.7z', url: 'https://opengameart.org/sites/default/files/Free%20Hedges.7z' }],
+    modifications: 'OBJ→GLB, TGA→WebP, scaled, merged.',
+    usage: 'Clipped hedges in the planted median.',
+  },
+  {
+    id: 'nobiax-grass-01',
+    kind: 'vegetation',
+    title: 'Grass Pack #01',
+    authors: 'Nobiax / Yughues',
+    ...CC0,
+    page: 'https://opengameart.org/content/grass-pack-01',
+    files: [{ name: 'pack.7z', url: 'https://opengameart.org/sites/default/files/grass_01.7z' }],
+    modifications: 'OBJ→GLB, TGA→WebP, scaled.',
+    usage: 'Grass tufts on verges and median edges.',
+  },
+  {
+    id: '3td-tropical',
+    kind: 'vegetation',
+    title: '3TD Tropical Environment Pack v2.0 (Ceiba/ficus, Copal, Cecropia, palms, banana)',
+    authors: 'Ron Kapaun / 3 Tier Digital Studios',
+    ...CC0,
+    page: 'https://opengameart.org/content/3td-tropical-environment-pack-v20',
+    files: [{ name: 'pack.zip', url: 'https://opengameart.org/sites/default/files/Tropical_Environment_Pack_v2.0.zip' }],
+    modifications: 'COLLADA→GLB (assimp), textures re-linked from the pack, scaled to real heights, merged bark/leaf, LOD1 + runtime impostor LOD2.',
+    usage: 'Ficus/rain-tree-like roadside trees, broadleaf trees, additional palms.',
   },
 ];

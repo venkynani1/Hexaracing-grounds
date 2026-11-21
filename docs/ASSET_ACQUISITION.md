@@ -38,6 +38,7 @@ bus/truck/motorbike placeholders, which are **placeholders, not final assets**.
 | 4 | Motorcycle + rider | ≤ 6k tris | same | Art lead |
 | 5 | Two more licensed sports/sedan car bodies for squad variety | same pipeline as the Khronos car (logo/trademark scrub) | Khronos glTF-Sample-Assets has no other car; Sketchfab CC0/CC BY | Art lead |
 | 6 | Licensed OMR photos for texture work (e.g. real shop-front textures) | photos the client owns or CC0; no Street View | client photographer / Commons CC0 | Client |
+| 7a | Neem (Azadirachta indica), rain tree (Samanea saman), Indian almond, gulmohar | GLB with LOD0 ≤ 4k tris, alpha-cutout leaf atlas ≤ 1024², CC0/CC-BY | Sketchfab (needs an account to download), SpeedTree/Megascans (commercial licence), or commission | Art lead |
 | 7 | Hexaware gate/building reference + approved branding | from Hexaware brand team only (CLAUDE.md §5) | client | Client |
 
 To add any of these: put the source in `tools/assets/src/sources.ts` (licence, authors, modifications), run

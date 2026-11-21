@@ -62,3 +62,20 @@ Results are recorded in `docs/PROGRESS.md` (this session) with the exact command
 (`npm test`, `npm run test:perf`) cover 1 → 5 → 10 → 20 → 30 cars in one world, shared positions, collisions,
 120 clients, reconnection storm and restart recovery; `tools/loadtest/src/rehearsal.ts` runs a real-time
 60-minute rehearsal with 120 participant connections + host/projector observers.
+
+### Phase 6 results — real-time 60-minute rehearsal (this environment)
+`npx tsx tools/loadtest/src/rehearsal.ts --minutes 62` against a local server (PGlite): 30 squads × 4 role
+clients = 120 participant WebSockets + host + projector observers, racers driving their real courses.
+
+| Metric | Result |
+|---|---|
+| Unplanned disconnects | 0 |
+| One logical world (every client same roomId, every minute) | yes, 56/56 samples |
+| Server tick p99 (whole run / worst 400-tick window) | 5.0 ms / 6.8 ms (budget 50 ms) |
+| RTT p95 worst minute (localhost) | 22 ms |
+| Downstream per client | 6.7 KB/s |
+| Phases | IGNITION → … → WELCOME_CONVOY → CHAMPIONSHIP_REVEAL → FINISHED |
+| Reconnection storm (40 clients dropped at 20:00) | all rejoined, same world, 425 ms total, p95 417 ms |
+| Final standings | 30 squads |
+
+Not covered here: real phones, venue Wi-Fi, a deployed Neon database (PGlite was used), client FPS on devices.

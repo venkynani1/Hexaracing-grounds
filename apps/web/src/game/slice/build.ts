@@ -120,6 +120,7 @@ export interface SliceStatic {
   occluders: OccluderIndex;
   /** dynamic signal heads (state updated per frame) */
   signals: { node: number; heading: number; x: number; z: number }[];
+  veg: VegItem[];
   stats: { vertices: number; triangles: number; meshes: number; bakeMs: number; buildMs: number };
   setWet(wet: boolean): void;
 }
@@ -197,7 +198,8 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
   const PAVER_GREY: RGB = [0.95, 0.93, 0.9];
   const PAVER_RED: RGB = [1.0, 0.62, 0.52];
   const SOIL: RGB = [0.73, 0.56, 0.36];
-  const MEDIAN_GRASS: RGB = [0.62, 0.82, 0.45];
+  const MEDIAN_GRASS: RGB = [0.85, 1.05, 0.7];
+  const VERGE: RGB = [0.88, 1.02, 0.72];
 
   // ---------------------------------------------------------------- roads
   for (const id of cor.edges) {
@@ -296,34 +298,29 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
           const [x1, z1] = P(r1, 0);
           kerbBlocks(r0, r1, -hw, -1, 0.3);
           g('grass', mx, mz).ribbon(x0, z0, x1, z1, -hw - mw, -hw - 0.25, 0.28, 3, MEDIAN_GRASS, 3, 1);
-          // shrubs (low clipped hedge clumps), palms, twin-arm median lights
+          // licensed vegetation (instanced at runtime): clipped hedge run, coconut palms, grass at the kerb edges
           {
-            // clipped hedge along the median (one low rounded strip, gaps for palms are natural variation)
             const ho = -hw - Math.min(mw * 0.55, 1.2);
-            const hwid = Math.min(0.7, mw * 0.35);
-            const hg = g('vc', mx, mz);
-            const steps = Math.max(1, Math.round((r1 - r0) / 3));
-            const base = hg.pos.length / 3;
-            for (let i = 0; i <= steps; i++) {
-              const sv = r0 + 0.5 + ((r1 - r0 - 1) * i) / steps;
-              const h = 0.62 + 0.18 * Math.sin(sv * 1.7) + 0.08 * Math.sin(sv * 4.3);
-              const tint = 0.9 + 0.12 * Math.sin(sv * 0.9);
-              const cc: RGB = [0.24 * tint, 0.42 * tint, 0.17 * tint];
-              for (const [o, y, nn] of [[ho + hwid, 0.3, 0.8], [ho + hwid * 0.6, h, 0.3], [ho - hwid * 0.6, h, -0.3], [ho - hwid, 0.3, -0.8]] as const) {
-                const [px, pz] = P(sv, o);
-                const lx = -fz * nn;
-                const lz = fx * nn;
-                hg.v(px, y, pz, [lx, 1 - Math.abs(nn) * 0.4, lz], 0, 0, cc);
-              }
+            const yaw = Math.atan2(fx, fz);
+            for (let sv = r0 + 1.6; sv < r1 - 1.4; sv += 2.6) {
+              const [hx, hz] = P(sv, ho);
+              veg.push({ sp: 'hedge_long', x: hx, z: hz, yaw, s: 1, tint: 0.92 + rng.next() * 0.12 });
             }
-            for (let i = 0; i < steps; i++)
-              for (let j = 0; j < 3; j++) {
-                const a = base + i * 4 + j;
-                const b2 = a + 4;
-                hg.idx.push(a, b2, a + 1, a + 1, b2, b2 + 1, a, a + 1, b2, a + 1, b2 + 1, b2);
+            for (let sv = r0 + 0.8; sv < r1 - 0.8; sv += 1.1 + rng.next() * 0.9) {
+              const o = -hw - 0.45 - rng.next() * Math.max(0.1, mw - 0.9);
+              const [gx, gz] = P(sv, o);
+              veg.push({ sp: 'grass', x: gx, z: gz, yaw: rng.next() * 6.28, s: 0.7 + rng.next() * 0.6, tint: 0.85 + rng.next() * 0.25 });
+            }
+            if (mw > 1)
+              for (let sv = r0 + 6 + rng.next() * 8; sv < r1 - 4; sv += 15 + rng.next() * 9) {
+                const [px2, pz2] = P(sv, -hw - mw * 0.6);
+                const k = rng.next();
+                const sp = k < 0.55 ? 'palm_straight' : k < 0.85 ? 'palm_bend' : 'palm_dual';
+                const sc = 0.85 + rng.next() * 0.3;
+                veg.push({ sp, x: px2, z: pz2, yaw: rng.next() * 6.28, s: sc, tint: 0.88 + rng.next() * 0.2 });
+                addOcc({ kind: 'sphere', x: px2, z: pz2, cy: 10.5 * sc, r: 3.2 * sc, opacity: 0.55 });
               }
           }
-          if (mw > 1) for (let s = r0 + 6 + rng.next() * 8; s < r1 - 4; s += 14 + rng.next() * 10) palms.push({ x: P(s, -hw - mw * 0.6)[0], z: P(s, -hw - mw * 0.6)[1], s: 0.85 + rng.next() * 0.35, r: rng.next() * 6.28 });
           for (let s = r0 + 10; s < r1 - 3; s += 34) {
             const [lx, lz] = P(s, -hw - mw + 0.02);
             lights.push({ x: lx, z: lz, yaw: Math.atan2(fx, fz) });
@@ -340,13 +337,29 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
         const [x0, z0] = P(r0, 0);
         const [x1, z1] = P(r1, 0);
         g('pavers', mx, mz).ribbon(x0, z0, x1, z1, Math.min(fp0, fp1), Math.max(fp0, fp1), 0.2, 2.2, brick, 3, 1);
-        // soil verge behind the footpath
+        // grass verge behind the footpath (bare soil only in small patches — see ground tint)
         const v1 = o + side * 5.6;
-        g('concrete', mx, mz).ribbon(x0, z0, x1, z1, Math.min(fp1, v1), Math.max(fp1, v1), 0.05, 5, SOIL, 4, 1);
-        // rain trees on the verge (big shady canopies) — not on the kerb
-        if (e.cls <= 3) for (let s = r0 + 5 + rng.next() * 10; s < r1 - 5; s += 26 + rng.next() * 24) {
-          const [tx, tz] = P(s, o + side * 4.4);
-          if (clear(tx, tz, id) > 3) trees.push({ x: tx, z: tz, s: 0.8 + rng.next() * 0.5, c: rng.next() });
+        g('grass', mx, mz).ribbon(x0, z0, x1, z1, Math.min(fp1, v1), Math.max(fp1, v1), 0.05, 3, VERGE, 4, 1);
+        // roadside trees (ficus / copal / cecropia mix), shrubs and grass tufts on the verge
+        if (e.cls <= 3)
+          for (let sv = r0 + 4 + rng.next() * 10; sv < r1 - 4; sv += 17 + rng.next() * 20) {
+            const [tx, tz] = P(sv, o + side * (4.2 + rng.next() * 0.8));
+            if (clear(tx, tz, id) < 3.2) continue;
+            const k = rng.next();
+            const sp = k < 0.5 ? 'ficus' : k < 0.78 ? 'copal' : 'cecropia';
+            const sc = 0.8 + rng.next() * 0.4;
+            veg.push({ sp, x: tx, z: tz, yaw: rng.next() * 6.28, s: sc, tint: 0.85 + rng.next() * 0.25 });
+            addOcc({ kind: 'sphere', x: tx, z: tz, cy: 8 * sc, r: 4.6 * sc, opacity: 0.8 });
+          }
+        for (let sv = r0 + 2 + rng.next() * 6; sv < r1 - 2; sv += 7 + rng.next() * 12) {
+          const [bx, bz] = P(sv, o + side * (3.6 + rng.next() * 1.6));
+          if (clear(bx, bz, id) < 1.5) continue;
+          const k = rng.next();
+          veg.push({ sp: k < 0.4 ? 'bush_01' : k < 0.75 ? 'bush_04' : 'bush_05', x: bx, z: bz, yaw: rng.next() * 6.28, s: 0.8 + rng.next() * 0.5, tint: 0.85 + rng.next() * 0.25 });
+        }
+        for (let sv = r0 + 0.6; sv < r1 - 0.6; sv += 0.9 + rng.next() * 1.4) {
+          const [gx, gz] = P(sv, o + side * (3.15 + rng.next() * 2.3));
+          veg.push({ sp: 'grass', x: gx, z: gz, yaw: rng.next() * 6.28, s: 0.7 + rng.next() * 0.7, tint: 0.8 + rng.next() * 0.3 });
         }
         if (major && side > 0)
           for (let s = r0 + 18; s < r1 - 3; s += 36) {
@@ -461,6 +474,83 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
   }
   onProgress(0.45);
 
+  // ---------------------------------------------------------------- empty lots: compound wall + campus planting (OMR look)
+  {
+    const nearBuilding = (x: number, z: number, r: number) => blds.some((b) => Math.hypot(b.x - x, b.z - z) < r + Math.max(b.w, b.d) / 2);
+    const lr = createRng('slice', 'lots');
+    for (const id of cor.edges) {
+      const e = net.edges[id]!;
+      if (e.cls > 3) continue;
+      const A = net.nodes[e.a]!;
+      const B = net.nodes[e.b]!;
+      const L = e.length;
+      const fx = (B.x - A.x) / L;
+      const fz = (B.z - A.z) / L;
+      const yaw = Math.atan2(fx, fz);
+      const divided = e.oneway && e.cls <= 2;
+      for (const side of divided ? [1] : [1, -1]) {
+        for (let sv = 13; sv < L - 13; sv += 26) {
+          const off = side * (e.halfWidth + 6 + 12);
+          const lx = A.x + fx * sv - fz * off;
+          const lz = A.z + fz * sv + fx * off;
+          if (nearBuilding(lx, lz, 6) || clear(lx, lz, id) < 10) continue;
+          if ([e.a, e.b].some((n) => isJunction(n) && Math.hypot(net.nodes[n]!.x - lx, net.nodes[n]!.z - lz) < 30)) continue;
+          // wall along the frontage with a gate gap
+          const wo = side * (e.halfWidth + 5.8);
+          const w0 = sv - 12;
+          const w1 = sv + 12;
+          const gate = sv + (lr.next() - 0.5) * 12;
+          const wc: RGB = [0.95, 0.93, 0.87];
+          for (const [a0, a1] of [[w0, gate - 2.5], [gate + 2.5, w1]] as const) {
+            if (a1 - a0 < 1) continue;
+            const x0 = A.x + fx * a0 - fz * wo;
+            const z0 = A.z + fz * a0 + fx * wo;
+            const x1 = A.x + fx * a1 - fz * wo;
+            const z1 = A.z + fz * a1 + fx * wo;
+            if (clear(x0, z0, id) < 1 || clear(x1, z1, id) < 1) continue;
+            const wg = g('concrete', x0, z0);
+            wg.wall(x0, z0, x1, z1, 0, 1.8, 3, 1.8, wc, 0, 2, Math.max(1, Math.round((a1 - a0) / 3)));
+            wg.wall(x1, z1, x0, z0, 0, 1.8, 3, 1.8, wc, 0, 2, Math.max(1, Math.round((a1 - a0) / 3)));
+            addOcc({ kind: 'box', x: (x0 + x1) / 2, z: (z0 + z1) / 2, hw: (a1 - a0) / 2, hd: 0.1, y0: 0, y1: 1.8, rot: yaw + Math.PI / 2 });
+          }
+          // campus planting behind the wall: 1–3 trees, a few shrubs, grass
+          const nT = 1 + Math.floor(lr.next() * 3);
+          for (let k = 0; k < nT; k++) {
+            const so = sv + (lr.next() - 0.5) * 18;
+            const oo = side * (e.halfWidth + 10 + lr.next() * 14);
+            const tx = A.x + fx * so - fz * oo;
+            const tz = A.z + fz * so + fx * oo;
+            if (nearBuilding(tx, tz, 3) || clear(tx, tz, id) < 6) continue;
+            const q = lr.next();
+            const sp = q < 0.4 ? 'ficus' : q < 0.62 ? 'copal' : q < 0.8 ? 'cecropia' : 'palm_straight';
+            const sc = 0.8 + lr.next() * 0.45;
+            veg.push({ sp, x: tx, z: tz, yaw: lr.next() * 6.28, s: sc, tint: 0.85 + lr.next() * 0.25 });
+            addOcc({ kind: 'sphere', x: tx, z: tz, cy: 8 * sc, r: 4.6 * sc, opacity: 0.8 });
+          }
+          for (let k = 0; k < 3; k++) {
+            const so = sv + (lr.next() - 0.5) * 20;
+            const oo = side * (e.halfWidth + 6.8 + lr.next() * 1.2);
+            veg.push({ sp: lr.next() < 0.5 ? 'bush_04' : 'bush_01', x: A.x + fx * so - fz * oo, z: A.z + fz * so + fx * oo, yaw: lr.next() * 6.28, s: 0.8 + lr.next() * 0.5, tint: 0.85 + lr.next() * 0.25 });
+          }
+        }
+      }
+    }
+    // distant tree belt (renders almost entirely as impostors): breaks up the bare horizon
+    const R = cor.radius;
+    for (let k = 0; k < 900 && veg.length < 4000; k++) {
+      const a = lr.next() * Math.PI * 2;
+      const r = Math.sqrt(lr.next()) * R;
+      const x = cor.center.x + Math.cos(a) * r;
+      const z = cor.center.z + Math.sin(a) * r;
+      let dPath = Infinity;
+      for (let i = 0; i < cor.pts.length; i += 4) dPath = Math.min(dPath, Math.hypot(cor.pts[i]!.x - x, cor.pts[i]!.z - z));
+      if (dPath < 70 || clear(x, z, -1) < 9 || nearBuilding(x, z, 4)) continue;
+      const q = lr.next();
+      const sp = q < 0.35 ? 'ficus' : q < 0.55 ? 'copal' : q < 0.7 ? 'cecropia' : q < 0.9 ? 'palm_straight' : 'palm_bend';
+      veg.push({ sp, x, z, yaw: lr.next() * 6.28, s: 0.8 + lr.next() * 0.45, tint: 0.85 + lr.next() * 0.25 });
+    }
+  }
+
   // ---------------------------------------------------------------- petrol station at its real OSM location
   const st = cor.station;
   if (st) {
@@ -492,51 +582,6 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
   onProgress(0.55);
 
   // ---------------------------------------------------------------- vegetation + furniture geometry (merged, baked)
-  for (const t of trees) {
-    // rain tree: short trunk splitting into a very wide, flat, layered canopy
-    const tr = g('vc', t.x, t.z);
-    tr.box(t.x, t.z, 0.6 * t.s, 0.6 * t.s, 0, 3.4 * t.s, t.c * 6, 1, 3, [0.62, 0.55, 0.47], undefined, undefined, 2);
-    const leaves = g('vc', t.x, t.z);
-    const blobs = 5;
-    for (let k = 0; k < blobs; k++) {
-      const a = (k / blobs) * Math.PI * 2 + t.c * 3;
-      const rr = (k === 0 ? 0 : 3.1) * t.s;
-      const cx = t.x + Math.cos(a) * rr;
-      const cz = t.z + Math.sin(a) * rr;
-      const cy = (k === 0 ? 6.6 : 5.9) * t.s;
-      const r = (k === 0 ? 3.6 : 3.0) * t.s;
-      const v = 0.85 + ((k * 37) % 10) / 40;
-      blob(leaves, cx, cy, cz, r, r * 0.5, [0.24 * v + t.c * 0.05, 0.4 * v + t.c * 0.06, 0.16 * v], 7 + k + Math.floor(t.c * 50));
-      addOcc({ kind: 'sphere', x: cx, z: cz, cy, r: r * 0.85, opacity: 0.85 });
-    }
-    for (const a of [0.4, 2.5, 4.4]) {
-      const bx = t.x + Math.cos(a + t.c) * 1.2 * t.s;
-      const bz = t.z + Math.sin(a + t.c) * 1.2 * t.s;
-      tr.box((t.x + bx) / 2, (t.z + bz) / 2, 0.35 * t.s, 0.35 * t.s, 3.2 * t.s, 5.6 * t.s, a, 1, 2, [0.55, 0.49, 0.42]);
-    }
-  }
-  for (const s of shrubs) {
-    const c: RGB = [0.25 + s.c * 0.08, 0.42 + s.c * 0.1, 0.17];
-    blob(g('vc', s.x, s.z), s.x, 0.3 + 0.22 * s.s, s.z, 0.8 * s.s, 0.42 * s.s, c, Math.floor(s.c * 100));
-  }
-  for (const p of palms) {
-    const tr = g('vc', p.x, p.z);
-    // slightly leaning ringed trunk
-    let px = p.x;
-    let pz = p.z;
-    const lean = 0.06;
-    for (let k = 0; k < 6; k++) {
-      const nx = px + Math.cos(p.r) * lean * 1.4;
-      const nz = pz + Math.sin(p.r) * lean * 1.4;
-      tr.box((px + nx) / 2, (pz + nz) / 2, 0.42 - k * 0.025, 0.42 - k * 0.025, 0.28 + k * 1.4 * p.s, 0.28 + (k + 1) * 1.4 * p.s, p.r, 1, 1.4, [0.6, 0.53, 0.44]);
-      px = nx;
-      pz = nz;
-    }
-    const top = 0.28 + 6 * 1.4 * p.s;
-    const fr = g('vc', px, pz);
-    for (let k = 0; k < 10; k++) frond(fr, px, top, pz, (k / 10) * Math.PI * 2 + p.r, (3.2 + (k % 3) * 0.4) * p.s, [0.36, 0.55, 0.2]);
-    addOcc({ kind: 'sphere', x: px, z: pz, cy: top - 0.6, r: 2.6 * p.s, opacity: 0.45 });
-  }
   for (const l of lights) twinArmLight(g('vc', l.x, l.z), l.x, l.z, l.yaw, true);
   for (const l of sideLights) twinArmLight(g('vc', l.x, l.z), l.x, l.z, l.yaw, false);
   for (const tk of tanks) g('vc', tk.x, tk.z).box(tk.x, tk.z, 1.2, 1.2, tk.y, tk.y + 1.3, 0.4, 1, 1, [0.12, 0.12, 0.13], g('vc', tk.x, tk.z), [0.15, 0.15, 0.16]);
@@ -589,7 +634,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
             const x = x0 + i * step;
             const z = z0 + j * step;
             const tone = 0.85 + 0.3 * Math.sin(x * 0.013 + z * 0.021) * Math.sin(z * 0.017 - x * 0.007);
-            gg.v(x, -0.06, z, [0, 1, 0], x / 9, z / 9, [0.95 * tone, 0.9 * tone, 0.78 * tone]);
+            gg.v(x, -0.06, z, [0, 1, 0], x / 9, z / 9, [0.82 * tone, 1.0 * tone, 0.62 * tone]);
           }
         for (let i = 0; i < n; i++)
           for (let j = 0; j < n; j++) {
@@ -606,7 +651,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     asphalt: tiledTex(scene, 'asphalt_diff.webp'),
     pavers: tiledTex(scene, 'pavers_diff.webp'),
     concrete: tiledTex(scene, 'concrete_diff.webp'),
-    grass: tiledTex(scene, 'grass_diff.webp'),
+    grass: tiledTex(scene, 'leafygrass_diff.webp'),
     glassA: tiledTex(scene, 'facade019a_diff.webp'),
     glassB: tiledTex(scene, 'facade001_diff.webp'),
     office: tiledTex(scene, 'facade006_diff.webp'),
@@ -868,6 +913,7 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
     meshes,
     occluders: occ,
     signals,
+    veg,
     stats: { vertices: verts, triangles: tris, meshes: meshes.length, bakeMs: Math.round(bakeMs), buildMs: Math.round(performance.now() - t0) },
     setWet(wet: boolean) {
       if (wet === wetNow) return;
@@ -955,9 +1001,16 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
 }
 
 // collected during the road pass, consumed later (module-level scratch reset per build)
-let trees: { x: number; z: number; s: number; c: number }[] = [];
-let shrubs: { x: number; z: number; s: number; c: number }[] = [];
-let palms: { x: number; z: number; s: number; r: number }[] = [];
+/** licensed vegetation placements (instanced at runtime by slice/vegetation.ts) */
+export interface VegItem {
+  sp: string;
+  x: number;
+  z: number;
+  yaw: number;
+  s: number;
+  tint: number;
+}
+let veg: VegItem[] = [];
 let lights: { x: number; z: number; yaw: number; twin?: boolean }[] = [];
 let sideLights: { x: number; z: number; yaw: number }[] = [];
 let tanks: { x: number; z: number; y: number }[] = [];
@@ -965,9 +1018,7 @@ let busShelter: { e: number; ax: number; az: number; fx: number; fz: number; hw:
 let gantry: { x: number; z: number; yaw: number; lx: number; lz: number } | null = null;
 let pylon: { x: number; z: number; yaw: number } | null = null;
 export function resetSliceScratch() {
-  trees = [];
-  shrubs = [];
-  palms = [];
+  veg = [];
   lights = [];
   sideLights = [];
   tanks = [];

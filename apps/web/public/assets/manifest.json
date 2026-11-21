@@ -121,6 +121,14 @@
       "kb": 45
     },
     {
+      "path": "tex/leafygrass_diff.ktx2",
+      "kb": 207
+    },
+    {
+      "path": "tex/leafygrass_diff.webp",
+      "kb": 322
+    },
+    {
       "path": "tex/pavers_diff.ktx2",
       "kb": 51
     },
@@ -135,9 +143,101 @@
     {
       "path": "tex/pavers_nor.webp",
       "kb": 27
+    },
+    {
+      "path": "veg/bush_01_lod0.glb",
+      "kb": 91
+    },
+    {
+      "path": "veg/bush_01_lod1.glb",
+      "kb": 37
+    },
+    {
+      "path": "veg/bush_04_lod0.glb",
+      "kb": 99
+    },
+    {
+      "path": "veg/bush_04_lod1.glb",
+      "kb": 37
+    },
+    {
+      "path": "veg/bush_05_lod0.glb",
+      "kb": 136
+    },
+    {
+      "path": "veg/bush_05_lod1.glb",
+      "kb": 51
+    },
+    {
+      "path": "veg/cecropia_lod0.glb",
+      "kb": 325
+    },
+    {
+      "path": "veg/cecropia_lod1.glb",
+      "kb": 244
+    },
+    {
+      "path": "veg/copal_lod0.glb",
+      "kb": 280
+    },
+    {
+      "path": "veg/copal_lod1.glb",
+      "kb": 207
+    },
+    {
+      "path": "veg/ficus_lod0.glb",
+      "kb": 741
+    },
+    {
+      "path": "veg/ficus_lod1.glb",
+      "kb": 259
+    },
+    {
+      "path": "veg/grass_lod0.glb",
+      "kb": 33
+    },
+    {
+      "path": "veg/grass_lod1.glb",
+      "kb": 12
+    },
+    {
+      "path": "veg/hedge_long_lod0.glb",
+      "kb": 245
+    },
+    {
+      "path": "veg/hedge_long_lod1.glb",
+      "kb": 65
+    },
+    {
+      "path": "veg/manifest.json",
+      "kb": 2
+    },
+    {
+      "path": "veg/palm_bend_lod0.glb",
+      "kb": 449
+    },
+    {
+      "path": "veg/palm_bend_lod1.glb",
+      "kb": 149
+    },
+    {
+      "path": "veg/palm_dual_lod0.glb",
+      "kb": 449
+    },
+    {
+      "path": "veg/palm_dual_lod1.glb",
+      "kb": 149
+    },
+    {
+      "path": "veg/palm_straight_lod0.glb",
+      "kb": 449
+    },
+    {
+      "path": "veg/palm_straight_lod1.glb",
+      "kb": 149
     }
   ],
-  "totalKB": 6755,
+  "totalKB": 11942,
   "meshes": {
     "cars/car_hero.glb": {
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/cars/car_hero.glb",
@@ -163,6 +263,94 @@
       "file": "/home/user/Hexaracing-grounds/apps/web/public/assets/props/barrier.glb",
       "trisBefore": 60928,
       "tris": 2394
+    },
+    "veg/ficus_lod0.glb": {
+      "trisBefore": 3375,
+      "tris": 3375
+    },
+    "veg/ficus_lod1.glb": {
+      "trisBefore": 3375,
+      "tris": 1456
+    },
+    "veg/copal_lod0.glb": {
+      "trisBefore": 2849,
+      "tris": 2849
+    },
+    "veg/copal_lod1.glb": {
+      "trisBefore": 2849,
+      "tris": 1285
+    },
+    "veg/cecropia_lod0.glb": {
+      "trisBefore": 2034,
+      "tris": 2034
+    },
+    "veg/cecropia_lod1.glb": {
+      "trisBefore": 2034,
+      "tris": 807
+    },
+    "veg/palm_straight_lod0.glb": {
+      "trisBefore": 940,
+      "tris": 940
+    },
+    "veg/palm_straight_lod1.glb": {
+      "trisBefore": 940,
+      "tris": 596
+    },
+    "veg/palm_bend_lod0.glb": {
+      "trisBefore": 940,
+      "tris": 940
+    },
+    "veg/palm_bend_lod1.glb": {
+      "trisBefore": 940,
+      "tris": 592
+    },
+    "veg/palm_dual_lod0.glb": {
+      "trisBefore": 940,
+      "tris": 940
+    },
+    "veg/palm_dual_lod1.glb": {
+      "trisBefore": 940,
+      "tris": 592
+    },
+    "veg/bush_01_lod0.glb": {
+      "trisBefore": 556,
+      "tris": 556
+    },
+    "veg/bush_01_lod1.glb": {
+      "trisBefore": 556,
+      "tris": 229
+    },
+    "veg/bush_04_lod0.glb": {
+      "trisBefore": 500,
+      "tris": 500
+    },
+    "veg/bush_04_lod1.glb": {
+      "trisBefore": 500,
+      "tris": 188
+    },
+    "veg/bush_05_lod0.glb": {
+      "trisBefore": 880,
+      "tris": 880
+    },
+    "veg/bush_05_lod1.glb": {
+      "trisBefore": 880,
+      "tris": 345
+    },
+    "veg/hedge_long_lod0.glb": {
+      "trisBefore": 2410,
+      "tris": 2410
+    },
+    "veg/hedge_long_lod1.glb": {
+      "trisBefore": 2410,
+      "tris": 370
+    },
+    "veg/grass_lod0.glb": {
+      "trisBefore": 4,
+      "tris": 4
+    },
+    "veg/grass_lod1.glb": {
+      "trisBefore": 4,
+      "tris": 4
     }
   }
 }

@@ -111,9 +111,25 @@ export class Fx {
     this.nitro = n;
   }
 
+  /** Wet road: tyre spray instead of smoke (lightweight particles behind each rear wheel). */
+  wet = false;
   updateCar(slip: number, speed: number, nitro: boolean) {
     const smokeRate = slip > 2.2 && speed > 3 ? Math.min(160, (slip - 2.2) * 45) : 0;
-    for (const s of this.smoke) s.emitRate = smokeRate;
+    const sprayRate = this.wet && speed > 6 ? Math.min(140, (speed - 6) * 8) : 0;
+    for (const s of this.smoke) {
+      s.emitRate = Math.max(smokeRate, sprayRate);
+      if (this.wet) {
+        s.color1 = new Color4(0.82, 0.86, 0.9, 0.32);
+        s.color2 = new Color4(0.75, 0.8, 0.85, 0.2);
+        s.minLifeTime = 0.25;
+        s.maxLifeTime = 0.55;
+      } else {
+        s.color1 = new Color4(0.9, 0.9, 0.9, 0.5);
+        s.color2 = new Color4(0.8, 0.8, 0.8, 0.35);
+        s.minLifeTime = 0.6;
+        s.maxLifeTime = 1.3;
+      }
+    }
     if (this.nitro) this.nitro.emitRate = nitro && speed > 1 ? 900 : 0;
   }
 

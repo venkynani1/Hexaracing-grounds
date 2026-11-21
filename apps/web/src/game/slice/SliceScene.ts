@@ -31,11 +31,12 @@ import { Fx } from '../render/fx';
 import { CarFleet, HeroCar, buildCarTemplate, type CarPose, type CarTemplate } from '../render/vehicles';
 import { SUN } from './bake';
 import { buildSlice, setSliceKtx2, type SliceStatic } from './build';
+import { Vegetation } from './vegetation';
 import type { Corridor } from './corridor';
 
 export type SliceQuality = 'low' | 'medium' | 'high';
 const Q: Record<SliceQuality, { minScale: number; maxScale: number; fog: number; hero: boolean; particles: number; env: number }> = {
-  low: { minScale: 1.6, maxScale: 2.6, fog: 0.0034, hero: false, particles: 0.4, env: 32 },
+  low: { minScale: 1.6, maxScale: 2.6, fog: 0.0034, hero: false, particles: 0.3, env: 32 },
   medium: { minScale: 1.25, maxScale: 2.2, fog: 0.003, hero: true, particles: 0.6, env: 64 },
   high: { minScale: 1, maxScale: 2, fog: 0.0026, hero: true, particles: 1, env: 128 },
 };
@@ -154,6 +155,12 @@ export class SliceScene {
     Object.assign(this.stats, { buildMs: this.world.stats.buildMs, bakeMs: this.world.stats.bakeMs, vertices: this.world.stats.vertices, triangles: this.world.stats.triangles, staticMeshes: this.world.stats.meshes });
     this.buildSignals();
     this.buildCarShadowTex();
+    onProgress(0.8, 'Planting trees');
+    const noveg = new URLSearchParams(location.search).get('noveg') === '1'; // measurement ablation only
+    this.veg = noveg ? null : new Vegetation(scene);
+    if (this.veg)
+    await this.veg.load(['ficus', 'copal', 'cecropia', 'palm_straight', 'palm_bend', 'palm_dual', 'bush_01', 'bush_04', 'bush_05', 'hedge_long', 'grass'], this.world.veg, this.world.occluders);
+    this.veg?.update(this.camera, true);
     onProgress(0.85, 'Compiling shaders');
     const tw = performance.now();
     // Shader warm-up: make every material ready (incl. instanced + vertex-colour variants) before driving.
@@ -164,6 +171,7 @@ export class SliceScene {
     onProgress(1, 'Ready');
   }
   pb: ProceduralBuildings | null = null;
+  veg: Vegetation | null = null;
   private heroTpl: CarTemplate | null = null;
   private wantHero: Color3 | null = null;
 
@@ -298,6 +306,8 @@ export class SliceScene {
     this.scene.environmentIntensity = r ? 0.45 : 0.75;
     this.skyMat.emissiveColor = r ? new Color3(0.55, 0.58, 0.62) : new Color3(1, 1, 1);
     this.world?.setWet(r);
+    this.veg?.setWet(r);
+    this.fx.wet = r;
   }
 
   updateCamera(p: CarPose, speed: number, dt: number) {
@@ -315,6 +325,7 @@ export class SliceScene {
     this.camPos = Vector3.Lerp(this.camPos, target, 1 - Math.exp(-dt * 9));
     this.camera.position.copyFrom(this.camPos);
     this.camera.setTarget(look);
+    this.veg?.update(this.camera);
     this.camera.fovMode = tall ? UniversalCamera.FOVMODE_HORIZONTAL_FIXED : UniversalCamera.FOVMODE_VERTICAL_FIXED;
     const fovT = (tall ? 1.12 : 0.9) + Math.min(0.22, speed * 0.004) + (p.nitro ? 0.1 : 0);
     this.camera.fov += (fovT - this.camera.fov) * (1 - Math.exp(-dt * 4));

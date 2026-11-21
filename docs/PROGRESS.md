@@ -235,3 +235,14 @@ Update this at the end of every session: what runs, what's tested, what's next, 
 - Phase 6: see results in docs/ACCEPTANCE.md (real-time 60-min rehearsal, 120 participants + 2 observers).
 - Not done: device gate; buses/trucks/autos/bikes as licensed models (acquisition checklist); applying the slice
   architecture to the full Chennai world (blocked on the device gate by directive).
+
+## Session: environment rebuild (vegetation)
+- Primitive trees/palms/shrubs replaced by licensed CC0 models (3TD Tropical pack, Nobiax palms/bushes/hedges/
+  grass), converted with `tools/assets/src/vegetation.ts` (assimp → GLB, LOD0/LOD1, KTX2-in-GLB) + runtime
+  impostor LOD2, thin-instanced, baked foliage light. Leafy-grass turf verges; walled + planted frontages.
+- 60-min real-time rehearsal (120 participants + 2 observers): 0 unplanned disconnects, one world in every
+  sample, tick p99 ≤ 5.0 ms (≤ 6.8 ms in any 400-tick window), RTT p95 ≤ 22 ms, all phases through FINISHED,
+  40-client reconnection storm recovered in 425 ms, 30 squads in the final standings.
+- Tests: 110 + 4 perf + 8 e2e (incl. new `/slice` smoke) pass.
+- Verdict: FAIL / NOT YET ACCEPTED — see docs/ENVIRONMENT.md (device gate not run; vegetation doubles GPU
+  cost in the software-GPU proxy; remaining visual defects listed).

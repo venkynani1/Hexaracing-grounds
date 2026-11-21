@@ -1,0 +1,138 @@
+{
+  "species": [
+    {
+      "id": "ficus",
+      "kind": "tree",
+      "height": 13,
+      "source": "3td-tropical"
+    },
+    {
+      "id": "copal",
+      "kind": "tree",
+      "height": 11,
+      "source": "3td-tropical"
+    },
+    {
+      "id": "cecropia",
+      "kind": "tree",
+      "height": 10,
+      "source": "3td-tropical"
+    },
+    {
+      "id": "palm_straight",
+      "kind": "palm",
+      "height": 12,
+      "source": "nobiax-palms"
+    },
+    {
+      "id": "palm_bend",
+      "kind": "palm",
+      "height": 11,
+      "source": "nobiax-palms"
+    },
+    {
+      "id": "palm_dual",
+      "kind": "palm",
+      "height": 12.5,
+      "source": "nobiax-palms"
+    },
+    {
+      "id": "bush_01",
+      "kind": "shrub",
+      "height": 1.3,
+      "source": "nobiax-bushes"
+    },
+    {
+      "id": "bush_04",
+      "kind": "shrub",
+      "height": 1.1,
+      "source": "nobiax-bushes"
+    },
+    {
+      "id": "bush_05",
+      "kind": "shrub",
+      "height": 1.6,
+      "source": "nobiax-bushes"
+    },
+    {
+      "id": "hedge_long",
+      "kind": "hedge",
+      "height": 0.9,
+      "source": "nobiax-hedges"
+    },
+    {
+      "id": "grass",
+      "kind": "grass",
+      "height": 0.55,
+      "source": "nobiax-grass-01"
+    }
+  ],
+  "stats": {
+    "ficus": {
+      "lod0": 3375,
+      "lod1": 1456,
+      "kb0": 320,
+      "kb1": 128
+    },
+    "copal": {
+      "lod0": 2849,
+      "lod1": 1285,
+      "kb0": 273,
+      "kb1": 138
+    },
+    "cecropia": {
+      "lod0": 2034,
+      "lod1": 807,
+      "kb0": 326,
+      "kb1": 149
+    },
+    "palm_straight": {
+      "lod0": 940,
+      "lod1": 596,
+      "kb0": 285,
+      "kb1": 104
+    },
+    "palm_bend": {
+      "lod0": 940,
+      "lod1": 592,
+      "kb0": 285,
+      "kb1": 104
+    },
+    "palm_dual": {
+      "lod0": 940,
+      "lod1": 592,
+      "kb0": 285,
+      "kb1": 104
+    },
+    "bush_01": {
+      "lod0": 556,
+      "lod1": 229,
+      "kb0": 79,
+      "kb1": 34
+    },
+    "bush_04": {
+      "lod0": 500,
+      "lod1": 188,
+      "kb0": 78,
+      "kb1": 32
+    },
+    "bush_05": {
+      "lod0": 880,
+      "lod1": 345,
+      "kb0": 99,
+      "kb1": 42
+    },
+    "hedge_long": {
+      "lod0": 2410,
+      "lod1": 370,
+      "kb0": 195,
+      "kb1": 50
+    },
+    "grass": {
+      "lod0": 4,
+      "lod1": 4,
+      "kb0": 26,
+      "kb1": 9
+    }
+  }
+}

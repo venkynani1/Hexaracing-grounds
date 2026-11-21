@@ -21,5 +21,11 @@
   "babylon-ktx2-decoder/babylon.ktx2Decoder.js": "4777d23a7e8fa8d08973611b6dae4b8a17fa260861fb3963c3bfb407d18d86e9",
   "babylon-ktx2-decoder/msc_basis_transcoder.js": "b8906bae7e55606aba070642eb3bce790a2b5aea774874e120e9fd41f7c7d60b",
   "babylon-ktx2-decoder/msc_basis_transcoder.wasm": "29becbf0eef2ce9f6d72109ad217704ec3799c432da0c26e3893b793ecab6bdc",
-  "babylon-ktx2-decoder/zstddec.wasm": "67d12d34f82ef700ec3a3795a77590252858c70330908a87ed1e73efc268cb4b"
+  "babylon-ktx2-decoder/zstddec.wasm": "67d12d34f82ef700ec3a3795a77590252858c70330908a87ed1e73efc268cb4b",
+  "nobiax-palms/pack.7z": "3d50fc508d289fbe56254235955cf5c38c35ddba7064a3c7931a9852b3f8e98f",
+  "nobiax-bushes/pack.7z": "54e60e712d7121b12096cd46508b68a9c49370f5a388fc70653baef583ce9325",
+  "nobiax-hedges/pack.7z": "6e4433d228277234ac3b9f783491af7d8f250f143bf0b54906aae62af4599f59",
+  "nobiax-grass-01/pack.7z": "0bbb1955dffd7c47baae1e5b91fad66140a16968f6e454c18220eaa0dda0be9c",
+  "3td-tropical/pack.zip": "32c9a3fcf2dea6e8094742c08b9dcc59cdfd0d6806b0906541eecc0bcf0f76ec",
+  "leafy_grass/leafy_grass_diff_1k.jpg": "cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a"
 }
