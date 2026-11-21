@@ -2,6 +2,18 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-21 — Backend moved to GitHub Codespaces (zero cost); Fly.io left unchanged
+
+- Server: codespace `psychic-space-chainsaw` (owner's account), public port 2567 →
+  https://psychic-space-chainsaw-v6v79jxpwxg7hwgg9-2567.app.github.dev, Neon `DATABASE_URL` via Codespaces secrets.
+- Vercel `VITE_SERVER_URL` / `VITE_WS_URL` point at it (deployment from 0eb67da).
+- Verified: health db:true; site connects over wss, host login works; 122 read-only host-observer WebSockets for
+  120 s, 0 disconnects; 31/31 health checks over 16 min, same world (no restart); HTTPS health round-trip 1.0–2.3 s
+  from the build environment (incl. TLS setup; not a Chennai WebSocket latency).
+- NOT yet tested: full event traffic through Codespaces port forwarding (30 bot squads + START ≈ 1.6 MB/s) — needs an
+  isolated second server/event so the live event isn't touched; phone latency from Chennai; codespace idle stop.
+- Fly.io app `code-redline-server` untouched (trial-stopped); delete only after the owner confirms.
+
 ## 2026-11-21 — Production backend on Neon PostgreSQL
 
 - Fly `code-redline-server` now uses Neon (secret `DATABASE_URL`, pooled, TLS); `ALLOW_EMBEDDED_DB`/`PGLITE_DIR` removed.
