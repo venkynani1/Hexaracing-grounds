@@ -27,7 +27,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | Free Hedges | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/free-hedges | OBJ→GLB, TGA→WebP, scaled, merged. | Clipped hedges in the planted median. |
 | Grass Pack #01 | vegetation | Nobiax / Yughues | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/grass-pack-01 | OBJ→GLB, TGA→WebP, scaled. | Grass tufts on verges and median edges. |
 | 3TD Tropical Environment Pack v2.0 (Ceiba/ficus, Copal, Cecropia, palms, banana) | vegetation | Ron Kapaun / 3 Tier Digital Studios | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/3td-tropical-environment-pack-v20 | COLLADA→GLB (assimp), textures re-linked from the pack, scaled to real heights, merged bark/leaf, LOD1 + runtime impostor LOD2. | Ficus/rain-tree-like roadside trees, broadleaf trees, additional palms. |
-| 3D Bus | vehicle | ajanhallinta | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/3d-bus | OBJ→GLB (assimp), Z-up→Y-up, front aligned to +Z, scaled to the shared-sim bus footprint (11 × 2.5 m), body repainted in a generic city livery (no operator branding), LOD1 simplified. | City buses in traffic (slice). |
+| 3D Bus | vehicle | ajanhallinta | [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) | https://opengameart.org/content/3d-bus | OBJ→GLB (assimp), Z-up→Y-up, front aligned to +Z, scaled to the shared-sim bus footprint (11 × 2.5 m), body repainted in a generic city livery (no operator branding), LOD1 simplified. | Not in default traffic (rejected as too primitive); `/slice?bus=1` comparison only. |
 
 ## Original (made for this project, no third-party licence)
 
@@ -41,7 +41,7 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 |---|---:|---|
 | `public/assets/cars/bus_lod0.glb` | 446 |  |
 | `public/assets/cars/bus_lod1.glb` | 174 |  |
-| `public/assets/cars/car_hero.glb` | 2532 | 189,011 → 83,818 |
+| `public/assets/cars/car_hero.glb` | 2054 | 189,011 → 62,617 |
 | `public/assets/cars/car_lod1.glb` | 340 | 129,632 → 20,698 |
 | `public/assets/cars/car_lod2.glb` | 103 | 129,632 → 3,927 |
 | `public/assets/cars/car_lod3.glb` | 62 | 129,632 → 1,203 |
@@ -79,30 +79,30 @@ Map data (© OpenStreetMap contributors, ODbL 1.0) is documented separately in `
 | `public/assets/tex/pavers_diff.webp` | 43 |  |
 | `public/assets/tex/pavers_nor.ktx2` | 33 |  |
 | `public/assets/tex/pavers_nor.webp` | 27 |  |
-| `public/assets/veg/bush_01_lod0.glb` | 79 | 556 → 556 |
-| `public/assets/veg/bush_01_lod1.glb` | 34 | 556 → 229 |
-| `public/assets/veg/bush_04_lod0.glb` | 78 | 500 → 500 |
-| `public/assets/veg/bush_04_lod1.glb` | 32 | 500 → 188 |
-| `public/assets/veg/bush_05_lod0.glb` | 99 | 880 → 880 |
-| `public/assets/veg/bush_05_lod1.glb` | 42 | 880 → 345 |
-| `public/assets/veg/cecropia_lod0.glb` | 326 | 2,034 → 2,034 |
-| `public/assets/veg/cecropia_lod1.glb` | 149 | 2,034 → 807 |
-| `public/assets/veg/copal_lod0.glb` | 273 | 2,849 → 2,849 |
-| `public/assets/veg/copal_lod1.glb` | 138 | 2,849 → 1,285 |
-| `public/assets/veg/ficus_lod0.glb` | 320 | 3,375 → 3,375 |
-| `public/assets/veg/ficus_lod1.glb` | 128 | 3,375 → 1,456 |
-| `public/assets/veg/grass_lod0.glb` | 26 | 4 → 4 |
-| `public/assets/veg/grass_lod1.glb` | 9 | 4 → 4 |
-| `public/assets/veg/hedge_long_lod0.glb` | 195 | 2,410 → 2,410 |
-| `public/assets/veg/hedge_long_lod1.glb` | 50 | 2,410 → 370 |
+| `public/assets/veg/bush_01_lod0.glb` | 94 | 556 → 556 |
+| `public/assets/veg/bush_01_lod1.glb` | 38 | 556 → 229 |
+| `public/assets/veg/bush_04_lod0.glb` | 91 | 500 → 500 |
+| `public/assets/veg/bush_04_lod1.glb` | 35 | 500 → 188 |
+| `public/assets/veg/bush_05_lod0.glb` | 115 | 880 → 880 |
+| `public/assets/veg/bush_05_lod1.glb` | 44 | 880 → 345 |
+| `public/assets/veg/cecropia_lod0.glb` | 393 | 2,034 → 2,034 |
+| `public/assets/veg/cecropia_lod1.glb` | 168 | 2,034 → 807 |
+| `public/assets/veg/copal_lod0.glb` | 303 | 2,849 → 2,849 |
+| `public/assets/veg/copal_lod1.glb` | 149 | 2,849 → 1,285 |
+| `public/assets/veg/ficus_lod0.glb` | 344 | 3,375 → 3,375 |
+| `public/assets/veg/ficus_lod1.glb` | 134 | 3,375 → 1,456 |
+| `public/assets/veg/grass_lod0.glb` | 31 | 4 → 4 |
+| `public/assets/veg/grass_lod1.glb` | 10 | 4 → 4 |
+| `public/assets/veg/hedge_long_lod0.glb` | 197 | 2,410 → 2,410 |
+| `public/assets/veg/hedge_long_lod1.glb` | 52 | 2,410 → 370 |
 | `public/assets/veg/manifest.json` | 2 |  |
-| `public/assets/veg/palm_bend_lod0.glb` | 285 | 940 → 940 |
-| `public/assets/veg/palm_bend_lod1.glb` | 104 | 940 → 592 |
-| `public/assets/veg/palm_dual_lod0.glb` | 285 | 940 → 940 |
-| `public/assets/veg/palm_dual_lod1.glb` | 104 | 940 → 592 |
-| `public/assets/veg/palm_straight_lod0.glb` | 285 | 940 → 940 |
-| `public/assets/veg/palm_straight_lod1.glb` | 104 | 940 → 596 |
-| **total** | **11369** | |
+| `public/assets/veg/palm_bend_lod0.glb` | 308 | 940 → 940 |
+| `public/assets/veg/palm_bend_lod1.glb` | 110 | 940 → 592 |
+| `public/assets/veg/palm_dual_lod0.glb` | 308 | 940 → 940 |
+| `public/assets/veg/palm_dual_lod1.glb` | 110 | 940 → 592 |
+| `public/assets/veg/palm_straight_lod0.glb` | 308 | 940 → 940 |
+| `public/assets/veg/palm_straight_lod1.glb` | 110 | 940 → 596 |
+| **total** | **11198** | |
 
 ## Source pins (sha256)
 

@@ -286,7 +286,10 @@ async function buildSpecies(sp: Species, lod: 0 | 1) {
       .listMaterials()
       .some((m) => m.getBaseColorTexture() === t && /^bark/.test(m.getName()));
     const max = (bark ? 512 : sp.leafTex) / (lod === 1 ? 2 : 1);
-    const out = await sharp(Buffer.from(img)).resize(max, max, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+    let out = await sharp(Buffer.from(img)).resize(max, max, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+    // Leaf atlases ship with near-black RGB under alpha = 0. Mipmaps average those texels into the leaf colour,
+    // so at distance (mip 2+) every card turns dark/black. Bleed the leaf colour into the transparent texels.
+    if (!bark) out = await bleedAlpha(out);
     t.setImage(new Uint8Array(out)).setMimeType('image/png');
   }
   const { ktx2 } = await import('ktx2-encoder/gltf-transform');
@@ -422,4 +425,73 @@ export async function buildVehicles() {
 if (process.argv[1] && /vegetation\.ts$/.test(process.argv[1])) {
   if (process.argv[2] === 'vehicles') await buildVehicles();
   else await buildVegetation(process.argv.slice(2).length ? process.argv.slice(2) : undefined);
+}
+
+/**
+ * Alpha "bleed" (edge padding): every texel with alpha below the cutout takes the colour of its nearest opaque
+ * neighbours (iterative dilation), and anything still unfilled takes the mean leaf colour. Alpha is unchanged,
+ * so the cutout shape is identical; only the colour that mipmapping blends in at the edges changes.
+ */
+export async function bleedAlpha(png: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const w = info.width;
+  const h = info.height;
+  const filled = new Uint8Array(w * h);
+  let mr = 0;
+  let mg = 0;
+  let mb = 0;
+  let mn = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (data[i * 4 + 3]! >= 100) {
+      filled[i] = 1;
+      mr += data[i * 4]!;
+      mg += data[i * 4 + 1]!;
+      mb += data[i * 4 + 2]!;
+      mn++;
+    }
+  }
+  if (!mn) return png;
+  let frontier = true;
+  for (let pass = 0; pass < 64 && frontier; pass++) {
+    frontier = false;
+    const add: number[] = [];
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (filled[i]) continue;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const j = yy * w + xx;
+            if (filled[j] !== 1) continue;
+            r += data[j * 4]!;
+            g += data[j * 4 + 1]!;
+            b += data[j * 4 + 2]!;
+            n++;
+          }
+        if (n) add.push(i, Math.round(r / n), Math.round(g / n), Math.round(b / n));
+      }
+    for (let k = 0; k < add.length; k += 4) {
+      const i = add[k]!;
+      data[i * 4] = add[k + 1]!;
+      data[i * 4 + 1] = add[k + 2]!;
+      data[i * 4 + 2] = add[k + 3]!;
+      filled[i] = 2;
+    }
+    for (let i = 0; i < w * h; i++) if (filled[i] === 2) filled[i] = 1;
+    frontier = add.length > 0;
+  }
+  for (let i = 0; i < w * h; i++)
+    if (!filled[i]) {
+      data[i * 4] = Math.round(mr / mn);
+      data[i * 4 + 1] = Math.round(mg / mn);
+      data[i * 4 + 2] = Math.round(mb / mn);
+    }
+  return sharp(data, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
 }

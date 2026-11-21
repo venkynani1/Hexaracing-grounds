@@ -6,7 +6,7 @@
  *  - Lighting baked into the TEMPLATE's vertex colours once (canopy-spherical normals for leaves, inner-canopy
  *    darkening, sun wrap); per-instance colour = natural tint variation × baked sun visibility at that spot.
  *    Materials are unlit + alpha-cutout (no blending, no per-pixel lights, no shadow map).
- *  - LOD0 < 45 m, LOD1 < 120 m, LOD2 beyond: impostor cards rendered ONCE at load from each species' LOD0 into a
+ *  - trees LOD0 < 24 m, LOD1 < 70 m, LOD2 beyond: impostor cards rendered ONCE at load from each species' LOD0 into a
  *    shared atlas, yaw-facing the camera. 10 % hysteresis so trees don't flicker between levels.
  */
 import {
@@ -33,8 +33,8 @@ import type { OccluderIndex } from './bake';
 import type { VegItem } from './build';
 
 const L = { x: -SUN.x, y: -SUN.y, z: -SUN.z };
-const LOD0 = 45;
-const LOD1 = 120;
+const LOD0 = 24;
+const LOD1 = 70;
 const ATLAS_CELL = 256;
 const GRID = 40;
 const isSmall = (sp: string) => sp === 'grass' || sp.startsWith('bush') || sp === 'hedge_long';
@@ -187,7 +187,7 @@ export class Vegetation {
     for (const id of ids) {
       const lods: [Part[], Part[]] = [[], []];
       for (const lod of [0, 1] as const) {
-        const c = await loadContainer(scene, `veg/${id}_lod${lod}.glb`);
+        const c = await loadContainer(scene, `veg/${id}_lod${lod}.glb`, { srgbBuffers: false });
         if (!c) continue;
         c.addAllToScene();
         for (const m of c.meshes) {
@@ -238,7 +238,8 @@ export class Vegetation {
     if (!list.length) return;
     const cols = list.length;
     const rtt = new RenderTargetTexture('veg-atlas', { width: ATLAS_CELL * cols, height: ATLAS_CELL * 2 }, scene, true);
-    rtt.clearColor = new Color4(0, 0, 0, 0);
+    // transparent texels carry the mean foliage colour (not black), so the atlas mips don't darken leaf edges
+    rtt.clearColor = new Color4(0.3, 0.36, 0.2, 0);
     rtt.hasAlpha = true;
     const cam = new UniversalCamera('veg-atlas-cam', new Vector3(0, 0, -200), scene);
     cam.mode = UniversalCamera.ORTHOGRAPHIC_CAMERA;
@@ -307,8 +308,10 @@ export class Vegetation {
       const hedge = sp === 'hedge_long';
       const small = isSmall(sp);
       // measured: hedge LOD0 (2.4k tris) dominated vegetation triangles → LOD0 only up close
-      const b0 = hedge ? 14 : small ? 26 : 34;
-      const b1 = sp === 'grass' ? 42 : small ? 80 : LOD1;
+      // measured: vegetation was the largest cost (alpha-tested leaf overdraw, −45 % FPS) → full-detail cards only
+      // close to the camera; impostors (1 quad) from 70 m
+      const b0 = hedge ? 10 : small ? 16 : LOD0;
+      const b1 = sp === 'grass' ? 30 : small ? 55 : LOD1;
       const d = Math.hypot(it.x - cp.x, it.z - cp.z);
       const lod = d < b0 * (it.lod === 0 ? 1.08 : 1) ? 0 : d < b1 * (it.lod === 1 ? 1.08 : 1) ? 1 : small ? 3 : 2;
       if (lod !== it.lod) (it.lod = lod), this.dirty.add(sp);

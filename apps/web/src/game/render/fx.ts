@@ -38,10 +38,12 @@ export class Fx {
     ctx.fillRect(3, 0, 2, 64);
     drop.update();
     drop.hasAlpha = true;
-    const ps = new ParticleSystem('rain', Math.round(2600 * budget), scene);
+    // Measured (docs/PERF_AUDIT.md): 2.1k additive streaks in a 70 m box cost ~21 % of the frame, most of them
+    // outside the view. The emitter is now placed ahead of the camera, in a tighter box with ~40 % of the count.
+    const ps = new ParticleSystem('rain', Math.round(1000 * budget), scene);
     ps.particleTexture = drop;
-    ps.minEmitBox = new Vector3(-35, 18, -35);
-    ps.maxEmitBox = new Vector3(35, 24, 35);
+    ps.minEmitBox = new Vector3(-18, 16, -18);
+    ps.maxEmitBox = new Vector3(18, 22, 18);
     ps.direction1 = new Vector3(-1.5, -30, 0.5);
     ps.direction2 = new Vector3(-0.5, -36, 1.5);
     ps.minSize = 0.05;
@@ -50,7 +52,7 @@ export class Fx {
     ps.maxScaleY = 12;
     ps.minLifeTime = 0.6;
     ps.maxLifeTime = 0.8;
-    ps.emitRate = Math.round(2600 * budget);
+    ps.emitRate = Math.round(1000 * budget);
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
     ps.color1 = new Color4(0.8, 0.85, 0.95, 0.55);
     ps.color2 = new Color4(0.8, 0.85, 0.95, 0.35);

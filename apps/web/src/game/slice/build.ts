@@ -7,7 +7,7 @@
  * Built ONCE, bounded, merged per material into a few spatial chunks; lighting baked into vertex colours
  * (bake.ts). Buildings are exactly the shared procedural collision boxes (server-consistent), dressed as modules.
  */
-import { Color3, DynamicTexture, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VertexData, type Scene } from '@babylonjs/core';
+import { Color3, DynamicTexture, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VertexData, type BaseTexture, type Scene } from '@babylonjs/core';
 import { createRng, deHeading, deStop, edgesNear, lanePoint, type Building, type ProceduralBuildings, type RoadNetwork, type WorldMap } from '@redline/shared';
 import { tiledCompressed } from '../render/assets';
 import { bakeVertexColors, OccluderIndex, type Occluder } from './bake';
@@ -123,7 +123,7 @@ export interface SliceStatic {
   signals: { node: number; heading: number; x: number; z: number }[];
   veg: VegItem[];
   stats: { vertices: number; triangles: number; meshes: number; bakeMs: number; buildMs: number };
-  setWet(wet: boolean): void;
+  setWet(wet: boolean, reflections?: boolean): void;
 }
 
 let useKtx2 = true;
@@ -919,25 +919,28 @@ export async function buildSlice(scene: Scene, map: WorldMap, cor: Corridor, pb:
 
   const wetCache = new Map<Mesh, Float32Array>();
   let wetNow = false;
+  const wetEnv: { asphalt?: BaseTexture; other?: BaseTexture } = {};
   return {
     meshes,
     occluders: occ,
     signals,
     veg,
     stats: { vertices: verts, triangles: tris, meshes: meshes.length, bakeMs: Math.round(bakeMs), buildMs: Math.round(performance.now() - t0) },
-    setWet(wet: boolean) {
+    setWet(wet: boolean, reflections = true) {
       if (wet === wetNow) return;
       wetNow = wet;
       // Lightweight wet-road reflections: sky (environment cube) reflected on asphalt/pavers/paint with a
       // Fresnel falloff — strong at grazing angles (far road), faint underfoot. One cube sample per road pixel;
       // no reflection probe / extra render pass.
+      // Own texture objects (sharing the GPU cube): setting .level on scene.environmentTexture itself also
+      // dimmed the cars' IBL — the last assignment won for every material.
       const env = scene.environmentTexture;
+      if (env && !wetEnv.asphalt) for (const k of ['asphalt', 'other'] as const) (wetEnv[k] = env.clone()!), (wetEnv[k]!.level = k === 'asphalt' ? 0.16 : 0.09);
       for (const k of ['asphalt', 'pavers', 'paint', 'kerb'] as const) {
         const m = mats[k]!;
         m.unfreeze();
-        if (wet && env) {
-          m.reflectionTexture = env;
-          m.reflectionTexture.level = k === 'asphalt' ? 0.16 : 0.09;
+        if (wet && env && reflections) {
+          m.reflectionTexture = k === 'asphalt' ? wetEnv.asphalt! : wetEnv.other!;
           // Babylon: leftColor = facing the camera, rightColor = grazing → reflect mostly at grazing angles
           const f = new FresnelParameters();
           f.leftColor = Color3.Black();

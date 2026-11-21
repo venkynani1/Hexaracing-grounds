@@ -8,9 +8,15 @@ import { KhronosTextureContainer2, LoadAssetContainerAsync, Texture, type AssetC
 
 export const ASSET_BASE = '/assets';
 
-export async function loadContainer(scene: Scene, path: string): Promise<AssetContainer | null> {
+/**
+ * `srgbBuffers: false` for assets whose textures end up on (unlit) StandardMaterials: with sRGB buffers the GPU
+ * returns LINEAR texels, but StandardMaterial treats its diffuse texture as gamma and linearises it again for
+ * tone mapping — colours are decoded twice (foliage albedo 0.31 → ≈ 0.01, i.e. black). PBR materials (cars)
+ * handle sRGB buffers correctly and keep the default.
+ */
+export async function loadContainer(scene: Scene, path: string, opts: { srgbBuffers?: boolean } = {}): Promise<AssetContainer | null> {
   try {
-    return await LoadAssetContainerAsync(`${ASSET_BASE}/${path}`, scene);
+    return await LoadAssetContainerAsync(`${ASSET_BASE}/${path}`, scene, opts.srgbBuffers === false ? { pluginOptions: { gltf: { useSRGBBuffers: false } } } : undefined);
   } catch (e) {
     console.warn(`[assets] ${path} failed to load — falling back`, e);
     return null;

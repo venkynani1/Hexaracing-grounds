@@ -22,6 +22,22 @@ Dimensity 7000-series / Exynos 1380, Android 13–15, current Chrome). Record it
 5. Repeat with `&auto=1` (autopilot, for a reproducible baseline) and with `q=low` / `q=high` if medium fails/passes.
 6. Note thermal behaviour: touch-temperature after the run, and the `fpsTimeline` / `scaleTimeline` trend.
 
+### Benchmark configurations (same phone, same procedure, autopilot `&auto=1` for reproducibility)
+Run each for 15 min and attach the JSON. `rain=0|1` pins the weather so dry and wet are measured separately.
+
+| Run | URL | Measures |
+|---|---|---|
+| A dry | `/slice?accept=15&auto=1&q=high&bench=A&rain=0` | car + road only (floor cost of the renderer) |
+| B dry | `/slice?accept=15&auto=1&q=high&bench=B&rain=0` | + vegetation |
+| C dry | `/slice?accept=15&auto=1&q=high&rain=0` | full: traffic, lighting, buildings, vegetation |
+| C rain | `/slice?accept=15&auto=1&q=high&rain=1` | full + monsoon (particles, wet road) |
+| C dry / rain, Medium | same with `q=medium` | the preset we expect to ship |
+| one feature off | add `&off=veg` / `traffic` / `scenery` / `fx` / `wetrefl` / `hero` | attribution if C fails |
+
+The JSON includes `gpuFrameMsAvg` (EXT_disjoint_timer_query; null if the phone's browser hides it),
+`simMsAvg` (physics + traffic AI), `jsFrameMsAvg`, `drawCallsAvg`, `activeMeshesAvg`, `trianglesK`,
+`textureMemMB`, `particlesAvg`, long tasks and heap. Feature cost = FPS(C) vs FPS(C with `off=`).
+
 ### Gate (evaluated automatically on the page)
 | Check | Requirement |
 |---|---|
@@ -50,10 +66,11 @@ Dimensity 7000-series / Exynos 1380, Android 13–15, current Chrome). Record it
 
 ### If a check fails — knobs, in order of measured impact (docs/PERF_AUDIT.md)
 1. Render scale range (`SliceScene` `Q[preset].minScale/maxScale`) — pixel cost dominated the audit.
-2. Hero car LOD (use the 20.7k LOD on medium) — single most expensive object.
-3. Fog/draw distance + chunk culling radius (fewer static tris/draws).
-4. Car IBL size (32/64) or hemispheric-only car lighting.
-5. Particles budget (rain/smoke).
+2. Vegetation LOD distances (`slice/vegetation.ts`) — largest measured feature cost (PERF_AUDIT §5).
+3. Hero car LOD (Medium already uses the 20.7k LOD; High uses 62.6k) — single most expensive object.
+4. Fog/draw distance + chunk culling radius (fewer static tris/draws).
+5. Car IBL size (32/64) or hemispheric-only car lighting.
+6. Particles budget (rain/smoke).
 Re-run the same procedure after each change; record both runs.
 
 ## Phase 6 — multiplayer validation

@@ -2,6 +2,26 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-21 — Performance & realism blocker (slice)
+
+### What runs
+- `/slice` measurement switches: `?bench=A|B|C`, `?rain=0|1` (pins weather), `?off=veg,traffic,scenery,fx,wetrefl,env,hero`.
+- PerfProbe now reports physics/traffic ms, GPU ms (timer query where exposed), active meshes, particles.
+- Black foliage fixed at the root: vegetation glTFs load without sRGB buffers (double sRGB decode on unlit
+  StandardMaterials), leaf atlases alpha-bled before KTX2, impostor atlas cleared to foliage colour.
+- Evidence-based optimisations: tighter vegetation LODs, hero car 83.8k → 62.6k tris (Medium uses 20.7k LOD),
+  rain particles 2.6k → 1k ahead of the camera; wet-road reflection no longer mutates the shared env texture.
+- Box-like CC0 bus removed from slice traffic (`?bus=1` for comparison); detailed licensed bus requested.
+
+### Tested
+- Before/after ablation matrix (docs/PERF_AUDIT.md §5, raw rows in docs/perf/): full dry 4.5 → 6.7 FPS,
+  rain 3.8 → 6.1 FPS on SwiftShader at High/scale 1. 15-min dry and rain runs: no crash, flat heap.
+- typecheck, 110 unit + 4 perf + 8 e2e pass.
+
+### Not done — needs the owner
+- Device gate (A/B/C × dry/rain on the reference Android phone) — **FAIL here (software GPU), NOT RUN on a device**.
+- Licensed detailed Indian bus (CGTrader/Sketchfab need an account), autos, motorcycles (docs/ASSET_ACQUISITION.md).
+
 ## 2026-11-20 — Milestone 8: Production testing (automated parts)
 
 ### What runs

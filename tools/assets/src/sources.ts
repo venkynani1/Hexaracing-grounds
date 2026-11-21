@@ -225,6 +225,6 @@ export const SOURCES: AssetSource[] = [
     page: 'https://opengameart.org/content/3d-bus',
     files: [{ name: 'pack.zip', url: 'https://opengameart.org/sites/default/files/3DBus_by_ajanhallinta.zip' }],
     modifications: 'OBJ→GLB (assimp), Z-up→Y-up, front aligned to +Z, scaled to the shared-sim bus footprint (11 × 2.5 m), body repainted in a generic city livery (no operator branding), LOD1 simplified.',
-    usage: 'City buses in traffic (slice).',
+    usage: 'Not in default traffic (rejected as too primitive); `/slice?bus=1` comparison only.',
   },
 ];

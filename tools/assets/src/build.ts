@@ -86,7 +86,7 @@ async function buildCar(lod: 'hero' | 'lod1' | 'lod2' | 'lod3') {
   const before = triCount(doc);
   await doc.transform(
     weld({}),
-    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.27 : lod === 'lod1' ? 0.12 : lod === 'lod2' ? 0.025 : 0.006, error: lod === 'hero' ? 0.0008 : lod === 'lod1' ? 0.004 : lod === 'lod2' ? 0.03 : 0.08 }),
+    simplify({ simplifier: MeshoptSimplifier, ratio: lod === 'hero' ? 0.14 : lod === 'lod1' ? 0.12 : lod === 'lod2' ? 0.025 : 0.006, error: lod === 'hero' ? 0.0015 : lod === 'lod1' ? 0.004 : lod === 'lod2' ? 0.03 : 0.08 }),
     prune(),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: lod === 'hero' ? [1024, 1024] : lod === 'lod1' ? [256, 256] : [64, 64], quality: 82 }),
     quantize(),

@@ -26,7 +26,7 @@ import { Announce, MiniMap, Pedals, RaceClock, Speedo, Toast, Toasts } from '../
 import { PerfProbe, type ProbeReport } from '../perf/probe';
 import { detectGpu } from '../render/autoQuality';
 import { buildCorridor, type Corridor } from './corridor';
-import { SliceScene, type SliceQuality } from './SliceScene';
+import { OFF, SliceScene, type SliceQuality } from './SliceScene';
 import '../hud/hud.css';
 
 const STEP = 0.05;
@@ -247,7 +247,9 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
           spawn.push(id * 2);
           if (!e.oneway) spawn.push(id * 2 + 1);
         }
-        traffic = new TrafficSystem(net, { seed: 'slice', count: 8, spawnDe: cor.path, mix: { car: 0.7, bus: 0.3 } });
+        traffic = new TrafficSystem(net, { seed: 'slice', count: OFF.has('traffic') ? 0 : 8, spawnDe: cor.path, // The CC0 bus (ajanhallinta) was rejected as too primitive for the visual bar; buses return when a licensed
+        // detailed model is supplied (docs/ASSET_ACQUISITION.md). ?bus=1 shows the old one for comparison only.
+        mix: params.get('bus') === '1' ? { car: 0.7, bus: 0.3 } : { car: 1 } });
         void spawn;
         readyAt = performance.now();
         setLoad({ p: 1, label: 'Ready' });
@@ -276,6 +278,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
         acc = Math.min(acc + frameDt, STEP * 5);
         const p = predictor!;
         p.rain = rainRef.current;
+        const simT0 = performance.now();
         while (acc >= STEP) {
           acc -= STEP;
           simMs += STEP * 1000;
@@ -334,6 +337,7 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
           if (fromStart < 18) reset('End of slice — lap restart (disclosed)');
           else if (Math.hypot(s.x - cor.center.x, s.z - cor.center.z) > cor.radius - 140) reset('Left the slice — back to the start (disclosed)');
         }
+        probe.sim(performance.now() - simT0);
         const pose = p.renderPose(acc / STEP, frameDt)!;
         const s = p.state!;
         const fwd = forwardSpeed(s);
@@ -348,7 +352,8 @@ export default function SliceDrive({ map }: { map: WorldMap }) {
         game.scene.render();
         game.adaptResolution();
         if (acceptMin > 0 && probeStart) {
-          if (now - rainAt > 90_000) (rainAt = now), setRain((r) => !r);
+          // ?rain=0|1 pins the weather (dry and wet measured separately); otherwise alternate every 90 s
+          if (!params.has('rain') && now - rainAt > 90_000) (rainAt = now), setRain((r) => !r);
           if (now - lastScaleAt > 10_000) (lastScaleAt = now), scaleTl.push(+game.renderScale.toFixed(2));
           const el = (now - probeStart) / 1000;
           if (!finished && el >= acceptMin * 60) {

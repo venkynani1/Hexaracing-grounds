@@ -5,7 +5,7 @@
  * first ready frame, long tasks (main-thread blocking ≥ 50 ms), JS heap (Chrome), downloaded bytes, and an FPS
  * timeline (thermal trend). Runs identically on a desktop and on the reference Android device.
  */
-import { SceneInstrumentation, type Engine, type Scene } from '@babylonjs/core';
+import { EngineInstrumentation, SceneInstrumentation, type Engine, type Scene } from '@babylonjs/core';
 
 export interface ProbeReport {
   label: string;
@@ -31,6 +31,12 @@ export interface ProbeReport {
   longTasks: number;
   longTaskMaxMs: number;
   longTaskTotalMs: number;
+  /** shared physics + traffic AI per rendered frame (ms) */
+  simMsAvg: number;
+  /** GPU frame time from EXT_disjoint_timer_query (null where the browser does not expose it) */
+  gpuFrameMsAvg: number | null;
+  activeMeshesAvg: number;
+  particlesAvg: number;
   heapUsedMB: number | null;
   heapPeakMB: number | null;
   downloadMB: number;
@@ -54,6 +60,12 @@ export class PerfProbe {
   private dc: number[] = [];
   private tris: number[] = [];
   private longTasks: number[] = [];
+  private simAcc = 0;
+  private sims: number[] = [];
+  private gpu: number[] = [];
+  private act: number[] = [];
+  private parts: number[] = [];
+  private engInst: EngineInstrumentation | null = null;
   private heapPeak = 0;
   private start = 0;
   private last = 0;
@@ -80,7 +92,18 @@ export class PerfProbe {
     } catch {
       /* longtask unsupported (Safari) */
     }
+    try {
+      this.engInst = new EngineInstrumentation(engine);
+      this.engInst.captureGPUFrameTime = true;
+    } catch {
+      this.engInst = null;
+    }
     scene.onAfterRenderObservable.add(() => this.onFrame());
+  }
+
+  /** time spent in simulation (physics + traffic) since the last rendered frame */
+  sim(ms: number) {
+    this.simAcc += ms;
   }
 
   begin() {
@@ -91,6 +114,11 @@ export class PerfProbe {
     this.dc = [];
     this.tris = [];
     this.longTasks = [];
+    this.sims = [];
+    this.gpu = [];
+    this.act = [];
+    this.parts = [];
+    this.simAcc = 0;
     this.timeline = [];
     this.window = [];
     this.heapPeak = 0;
@@ -110,6 +138,14 @@ export class PerfProbe {
     this.am.push(this.inst.activeMeshesEvaluationTimeCounter.current);
     this.dc.push(this.inst.drawCallsCounter.current);
     this.tris.push(this.scene.getActiveIndices() / 3);
+    this.sims.push(this.simAcc);
+    this.simAcc = 0;
+    this.act.push(this.scene.getActiveMeshes().length);
+    let np = 0;
+    for (const ps of this.scene.particleSystems) np += ps.getActiveCount();
+    this.parts.push(np);
+    const g = this.engInst?.gpuFrameTimeCounter;
+    if (g && g.current > 0) this.gpu.push(g.current / 1e6);
     if (now - this.windowStart >= 10_000) {
       const avg = this.window.reduce((a, b) => a + b, 0) / this.window.length;
       this.timeline.push(+(1000 / avg).toFixed(1));
@@ -171,6 +207,10 @@ export class PerfProbe {
       longTasks: this.longTasks.length,
       longTaskMaxMs: Math.round(Math.max(0, ...this.longTasks)),
       longTaskTotalMs: Math.round(this.longTasks.reduce((a, b) => a + b, 0)),
+      simMsAvg: mean(this.sims),
+      gpuFrameMsAvg: this.gpu.length > this.frames.length / 4 ? mean(this.gpu) : null,
+      activeMeshesAvg: Math.round(mean(this.act)),
+      particlesAvg: Math.round(mean(this.parts)),
       heapUsedMB: mem ? +(mem.usedJSHeapSize / 1048576).toFixed(1) : null,
       heapPeakMB: mem ? +(this.heapPeak / 1048576).toFixed(1) : null,
       downloadMB: +(dl / 1048576).toFixed(2),

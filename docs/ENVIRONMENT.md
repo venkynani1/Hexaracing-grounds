@@ -71,7 +71,7 @@ GPU; this environment cannot.
 | No flat triangular palm fronds in foreground | **PASS** — textured, alpha-cutout fronds |
 | No empty brown terrain beside major roads | **PASS** — turf verges, walled + planted frontages |
 | Believable proportions | **PASS** — real-height scaling |
-| Chennai roadside scenery | **PARTIAL** — species are generic tropical stand-ins for neem/rain tree; no autos/buses/bikes models |
+| Chennai roadside scenery | **PARTIAL** — species are generic tropical stand-ins for neem/rain tree; no autos/buses/bikes models (the CC0 bus was withdrawn as too primitive, see PERF_AUDIT §5) |
 | Daylight + wet presentation | **PARTIAL** — baked daylight, wet darkening, tyre spray, restrained rain; **no road reflections** |
 | No placeholders | **PARTIAL** — buildings are textured boxes; compound walls can render dark on their shaded side |
 | Performance gate (30 FPS median, 24 1%-low, p95 ≤ 40 ms, no stalls > 250 ms, 15 min) | **NOT TESTED ON A DEVICE** — no Android device here; software-GPU numbers above are not phone numbers |
@@ -89,3 +89,8 @@ foliage LOD0 distances, grass density, impostor distance, render-scale range.
 5. Wet roads: darkening + spray + a Fresnel sky sheen (environment-cube reflection at grazing angles, no extra render pass). No puddles, no reflections of cars/lights.
 6. Impostors are single-view cards (visible when orbiting closely; fine from the chase camera).
 7. Grass tufts are cross-cards; up close they read as cards.
+
+## 5. Update 2026-11-21 — black foliage fixed
+The near-black trees were a colour-space bug (sRGB-buffer textures on unlit StandardMaterials → decoded twice),
+plus black texels under the leaf alpha bleeding in through mipmaps and the impostor atlas. All three fixed at
+the source; see docs/PERF_AUDIT.md §5.6 and `docs/perf/foliage-after.jpg`.

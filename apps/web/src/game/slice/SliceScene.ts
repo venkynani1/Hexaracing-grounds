@@ -36,9 +36,26 @@ import { Vegetation } from './vegetation';
 import type { Corridor } from './corridor';
 
 export type SliceQuality = 'low' | 'medium' | 'high';
+
+/**
+ * Measurement switches (never used in normal play):
+ *  ?off=veg,traffic,scenery,fx,wetrefl,env   — disable one feature at a time
+ *  ?bench=A  car + road only · B  car + road + vegetation · C  full (traffic, lighting, weather via ?rain=1)
+ */
+export const OFF: ReadonlySet<string> = (() => {
+  const q = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+  const s = new Set((q.get('off') ?? '').split(',').filter(Boolean));
+  if (q.get('noveg') === '1') s.add('veg');
+  const b = (q.get('bench') ?? '').toUpperCase();
+  if (b === 'A') ['veg', 'traffic', 'scenery', 'fx'].forEach((k) => s.add(k));
+  if (b === 'B') ['traffic', 'scenery', 'fx'].forEach((k) => s.add(k));
+  return s;
+})();
+/** materials kept in bench A/B ("car + road"): carriageway, markings, kerbs, footpaths, verges */
+const ROAD_MATS = new Set(['s-asphalt', 's-paint', 's-kerb', 's-pavers', 's-grass', 's-ground']);
 const Q: Record<SliceQuality, { minScale: number; maxScale: number; fog: number; hero: boolean; particles: number; env: number }> = {
   low: { minScale: 1.6, maxScale: 2.6, fog: 0.0034, hero: false, particles: 0.3, env: 32 },
-  medium: { minScale: 1.25, maxScale: 2.2, fog: 0.003, hero: true, particles: 0.6, env: 64 },
+  medium: { minScale: 1.25, maxScale: 2.2, fog: 0.003, hero: false, particles: 0.6, env: 64 },
   high: { minScale: 1, maxScale: 2, fog: 0.0026, hero: true, particles: 1, env: 128 },
 };
 const FOG_DRY = new Color3(0.78, 0.8, 0.82);
@@ -131,7 +148,7 @@ export class SliceScene {
     onProgress(0.02, 'Cars');
     const P = Q[this.quality];
     const [hero, lod1, lod2] = await Promise.all([
-      P.hero ? loadContainer(scene, 'cars/car_hero.glb') : loadContainer(scene, 'cars/car_lod1.glb'),
+      P.hero && !OFF.has('hero') ? loadContainer(scene, 'cars/car_hero.glb') : loadContainer(scene, 'cars/car_lod1.glb'),
       loadContainer(scene, 'cars/car_lod1.glb'),
       loadContainer(scene, 'cars/car_lod2.glb'),
     ]);
@@ -142,7 +159,7 @@ export class SliceScene {
     this.fleet.lod1Distance = 28;
     this.heroTpl = heroTpl;
     onProgress(0.15, 'Reflections');
-    try {
+    if (!OFF.has('env')) try {
       const env = new HDRCubeTexture(`${ASSET_BASE}/env/sky_1k.hdr`, scene, P.env, false, true, false, true);
       scene.environmentTexture = env;
       scene.environmentIntensity = 0.75;
@@ -154,12 +171,12 @@ export class SliceScene {
     this.pb = pb;
     this.world = await buildSlice(scene, this.map, this.cor, pb, (p) => onProgress(0.2 + p * 0.6, p < 0.65 ? 'Building OMR' : 'Baking light'));
     Object.assign(this.stats, { buildMs: this.world.stats.buildMs, bakeMs: this.world.stats.bakeMs, vertices: this.world.stats.vertices, triangles: this.world.stats.triangles, staticMeshes: this.world.stats.meshes });
-    this.buildSignals();
+    if (OFF.has('scenery')) for (const m of this.world.meshes) if (!ROAD_MATS.has(m.material?.name ?? '')) m.setEnabled(false);
+    if (!OFF.has('scenery')) this.buildSignals();
     this.buildCarShadowTex();
-    await this.loadBuses();
+    if (!OFF.has('traffic') && new URLSearchParams(location.search).get('bus') === '1') await this.loadBuses();
     onProgress(0.8, 'Planting trees');
-    const noveg = new URLSearchParams(location.search).get('noveg') === '1'; // measurement ablation only
-    this.veg = noveg ? null : new Vegetation(scene);
+    this.veg = OFF.has('veg') ? null : new Vegetation(scene);
     if (this.veg)
     await this.veg.load(['ficus', 'copal', 'cecropia', 'palm_straight', 'palm_bend', 'palm_dual', 'bush_01', 'bush_04', 'bush_05', 'hedge_long', 'grass'], this.world.veg, this.world.occluders);
     this.veg?.update(this.camera, true);
@@ -281,7 +298,7 @@ export class SliceScene {
     this.last = now;
     if (!this.hero) return;
     this.hero.set(p, dt);
-    this.fx.updateCar(p.slip ?? 0, Math.abs(p.speed ?? 0), !!p.nitro);
+    if (!OFF.has('fx')) this.fx.updateCar(p.slip ?? 0, Math.abs(p.speed ?? 0), !!p.nitro);
     if (this.sunShadow) {
       // offset along the sun's horizontal travel direction, in car space
       const len = 1.1;
@@ -303,7 +320,7 @@ export class SliceScene {
   private buses = new Map<number, { root: TransformNode; lods: TransformNode[]; lod: number }>();
   private async loadBuses() {
     for (const lod of [0, 1] as const) {
-      const c = await loadContainer(this.scene, `cars/bus_lod${lod}.glb`);
+      const c = await loadContainer(this.scene, `cars/bus_lod${lod}.glb`, { srgbBuffers: false });
       if (!c) continue;
       c.addAllToScene();
       for (const m of c.meshes) {
@@ -372,13 +389,14 @@ export class SliceScene {
     this.scene.fogDensity = Q[this.quality].fog * (r ? 1.9 : 1);
     this.scene.environmentIntensity = r ? 0.45 : 0.75;
     this.skyMat.emissiveColor = r ? new Color3(0.55, 0.58, 0.62) : new Color3(1, 1, 1);
-    this.world?.setWet(r);
+    this.world?.setWet(r, !OFF.has('wetrefl'));
     this.veg?.setWet(r);
     this.fx.wet = r;
   }
 
   updateCamera(p: CarPose, speed: number, dt: number) {
-    this.fx.setRain(this.rain, new Vector3(p.x, 0, p.z));
+    // rain volume centred ~14 m ahead of the car (what the chase camera sees), not around it
+    this.fx.setRain(this.rain && !OFF.has('fx'), new Vector3(p.x + Math.sin(p.heading) * 14, 0, p.z + Math.cos(p.heading) * 14));
     let dy = p.heading - this.camYaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.camYaw += dy * (1 - Math.exp(-dt * 5));
