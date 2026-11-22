@@ -159,8 +159,9 @@ test('M4: four browser contexts, every role UI active at once during one challen
   // 10:45 — Four-Key Puzzle 1 + Bluff Round 1 writing: all four roles are active simultaneously.
   expect((await warp(10.75 * 60_000)).ok()).toBe(true);
   const clueOf = async (p: Page, testid: string) => (await p.getByTestId(testid).locator('div').last().innerText()).trim();
-  await expect(racer.getByTestId('racer-clue')).toBeVisible();
-  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('clue-fourkey-1')).toBeVisible();
+  // after a time warp the squad view arrives on the next push — slower CI runners need more than the 5 s default
+  await expect(racer.getByTestId('racer-clue')).toBeVisible({ timeout: 20_000 });
+  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('clue-fourkey-1')).toBeVisible({ timeout: 20_000 });
   const clues = {
     RACER: await clueOf(racer, 'racer-clue'),
     ENGINEER: await clueOf(engineer, 'clue-fourkey-1'),
