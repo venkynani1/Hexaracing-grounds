@@ -17,7 +17,13 @@ export interface ProbeReport {
   p95FrameMs: number;
   p99FrameMs: number;
   maxFrameMs: number;
+  /** frame gaps > 250 ms while the page stayed visible (real stalls — gate criterion) */
   stallsOver250ms: number;
+  /** every gap > 250 ms: time into the run, length, overlapping long task (main-thread block), page hidden in between */
+  stalls: { atS: number; ms: number; longTaskMs: number; hidden: boolean }[];
+  /** page was hidden / frozen by the OS (screen off, app switch, notification) — those gaps are excluded from FPS stats */
+  interruptions: number;
+  interruptedMs: number;
   jsFrameMsAvg: number;
   jsFrameMsP95: number;
   renderTargetsMsAvg: number;
@@ -60,6 +66,12 @@ export class PerfProbe {
   private dc: number[] = [];
   private tris: number[] = [];
   private longTasks: number[] = [];
+  private longTaskSpans: [number, number][] = [];
+  private stallList: { from: number; to: number; hidden: boolean }[] = [];
+  private hiddenSince = 0;
+  private hiddenFlag = false;
+  private interruptions = 0;
+  private interruptedMs = 0;
   private simAcc = 0;
   private sims: number[] = [];
   private gpu: number[] = [];
@@ -86,7 +98,11 @@ export class PerfProbe {
     this.inst.captureActiveMeshesEvaluationTime = true;
     try {
       this.po = new PerformanceObserver((l) => {
-        if (this.running) for (const e of l.getEntries()) this.longTasks.push(e.duration);
+        if (this.running)
+          for (const e of l.getEntries()) {
+            this.longTasks.push(e.duration);
+            this.longTaskSpans.push([e.startTime, e.startTime + e.duration]);
+          }
       });
       this.po.observe({ type: 'longtask', buffered: false });
     } catch {
@@ -99,6 +115,15 @@ export class PerfProbe {
       this.engInst = null;
     }
     scene.onAfterRenderObservable.add(() => this.onFrame());
+    // OS interruptions (screen off, app switch, freeze): rAF stops, so the next frame gap is not the game's fault
+    const hide = () => {
+      if (!this.running || this.hiddenFlag) return;
+      this.hiddenFlag = true;
+      this.hiddenSince = performance.now();
+    };
+    document.addEventListener('visibilitychange', () => (document.hidden ? hide() : undefined));
+    document.addEventListener('freeze', hide);
+    addEventListener('pagehide', hide);
   }
 
   /** time spent in simulation (physics + traffic) since the last rendered frame */
@@ -114,6 +139,11 @@ export class PerfProbe {
     this.dc = [];
     this.tris = [];
     this.longTasks = [];
+    this.longTaskSpans = [];
+    this.stallList = [];
+    this.hiddenFlag = false;
+    this.interruptions = 0;
+    this.interruptedMs = 0;
     this.sims = [];
     this.gpu = [];
     this.act = [];
@@ -130,7 +160,21 @@ export class PerfProbe {
     if (!this.running) return;
     const now = performance.now();
     const dt = now - this.last;
+    const prev = this.last;
     this.last = now;
+    if (dt > 250) {
+      const hidden = this.hiddenFlag;
+      this.stallList.push({ from: prev, to: now, hidden }); // long-task overlap resolved in end(): entries arrive late
+      if (hidden) {
+        // the page was hidden/frozen by the OS: exclude this gap from the FPS statistics, report it separately
+        this.hiddenFlag = false;
+        this.interruptions++;
+        this.interruptedMs += dt;
+        this.windowStart += dt;
+        return;
+      }
+    }
+    this.hiddenFlag = false;
     this.frames.push(dt);
     this.window.push(dt);
     this.js.push(this.inst.frameTimeCounter.current);
@@ -194,6 +238,13 @@ export class PerfProbe {
       p99FrameMs: +pct(f, 0.99).toFixed(1),
       maxFrameMs: +(f[f.length - 1] ?? 0).toFixed(1),
       stallsOver250ms: this.frames.filter((x) => x > 250).length,
+      stalls: this.stallList.map(({ from, to, hidden }) => {
+        let lt = 0;
+        for (const [a, b] of this.longTaskSpans) lt += Math.max(0, Math.min(b, to) - Math.max(a, from));
+        return { atS: +((from - this.start) / 1000).toFixed(1), ms: Math.round(to - from), longTaskMs: Math.round(lt), hidden };
+      }),
+      interruptions: this.interruptions,
+      interruptedMs: Math.round(this.interruptedMs),
       jsFrameMsAvg: mean(this.js),
       jsFrameMsP95: +pct(jsSorted, 0.95).toFixed(2),
       renderTargetsMsAvg: mean(this.rt),

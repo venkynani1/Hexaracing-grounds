@@ -2,6 +2,18 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — First on-device gate run (Realme RMX5110, Mali-G615, 4 GB, Chrome 156)
+
+- `/benchmark` scene B (road + vegetation), medium, 3 min autopilot: median 60.2 FPS, 1% low 30.7, p95 21.8 ms,
+  thermal 100 %, res drift ×1.00 — all PASS. FAIL on stalls: 3 gaps > 250 ms, max 5963.5 ms. Long tasks max only
+  204 ms (total 430 ms), so the 6 s gap was not main-thread work; most likely the page was hidden/paused by the OS
+  (screen-off, notification, app switch). The probe could not tell — it had no visibility tracking.
+- Probe now records every gap > 250 ms (`stalls[]`: time, length, long-task overlap, page hidden) and counts OS
+  interruptions separately (`interruptions`, `interruptedMs`, excluded from FPS stats). Gate: "Stalls (page visible)"
+  must be 0 AND new row "Uninterrupted run" must be clean — an interrupted run can never PASS; it asks for a re-run.
+  Verified in Chromium: a hidden 1.5 s pause → interruption; a visible 0.7 s block → stall.
+- Still needed: re-run on the phone (screen on, no app switching) for a clean verdict; also scene C (full) and rain.
+
 ## 2026-11-22 — Master spec, stage 3: projector sequence + 120-player rerun with Levels 3–4
 
 - Server public ticker (`WorldRoom.ticker`, `{t:'ticker'}` to host/projector clients only): level changes,

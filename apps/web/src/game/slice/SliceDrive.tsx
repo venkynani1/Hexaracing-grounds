@@ -48,7 +48,9 @@ function evaluate(r: ProbeReport, minutes: number, scaleTimeline: number[]): Gat
     { name: 'Median FPS', ok: r.medianFps >= 30, value: String(r.medianFps), need: '≥ 30' },
     { name: '1% low FPS', ok: r.low1Fps >= 24, value: String(r.low1Fps), need: '≥ 24' },
     { name: 'p95 frame time', ok: r.p95FrameMs <= 40, value: `${r.p95FrameMs} ms`, need: '≤ 40 ms' },
-    { name: 'Stalls > 250 ms', ok: r.stallsOver250ms === 0, value: `${r.stallsOver250ms} (max ${r.maxFrameMs} ms)`, need: '0' },
+    { name: 'Stalls > 250 ms (page visible)', ok: r.stallsOver250ms === 0, value: r.stallsOver250ms ? `${r.stallsOver250ms} (max ${r.maxFrameMs} ms)` : '0', need: '0' },
+    // an OS interruption (screen off, app switch) is not a game stall, but the run is then not a clean measurement
+    { name: 'Uninterrupted run', ok: r.interruptions === 0, value: r.interruptions ? `${r.interruptions} pause (${(r.interruptedMs / 1000).toFixed(1)} s) — re-run, keep screen on` : 'yes', need: 'no pauses' },
     { name: 'Duration', ok: r.durationS >= minutes * 60 - 5, value: `${(r.durationS / 60).toFixed(1)} min`, need: `≥ ${minutes} min` },
     { name: 'Thermal (last 3 min / first 3 min FPS)', ok: thermalRatio >= 0.85 && scaleDrift < 1.35, value: `${(thermalRatio * 100).toFixed(0)}% · res drift ×${scaleDrift.toFixed(2)}`, need: '≥ 85%, res drift < ×1.35' },
     { name: 'No crash', ok: true, value: 'page alive', need: 'completes' },
