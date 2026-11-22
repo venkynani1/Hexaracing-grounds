@@ -18,8 +18,10 @@ Update this at the end of every session: what runs, what's tested, what's next, 
   10 shields, 2 alliances; L4: 54 Captain answers, 14 duel rows, 15/15 trades, 30 ledger rows (exactly once).
   "Live event untouched" = NOT RUN by design (`--no-live-check`; live codespace unreachable).
 - Tests: unit 118/118, e2e 9/9, typecheck clean.
+- Deployed with owner approval: codespace server updated to 92e0885 (port 2567 public; health/db/CORS/WS verified);
+  Vercel production redeployed from 92e0885 (dpl_FAaabhFMwzqvVWQy7PjL3V2h9GeU), home connects, no page errors.
 - Still open: Chennai area recognisability/signage, release plan + readiness report, on-device FPS gate,
-  real-phone rehearsal, live codespace restart + deploy (needs owner approval).
+  real-phone rehearsal.
 
 ## 2026-11-22 — Master spec, stage 2: Deceiver ops, alliances, Racer safe-hold, weighted scoring
 
