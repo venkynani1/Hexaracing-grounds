@@ -12,7 +12,11 @@ export JOIN_RATE_LIMIT="${JOIN_RATE_LIMIT:-600}"
 # Secret answers derive from the seed. It is stored with the event when the event is FIRST created, so a random one
 # here only matters for a new EVENT_NAME (existing events keep their stored seed across restarts).
 export EVENT_SEED="${EVENT_SEED:-$(od -An -N7 -tu8 /dev/urandom | tr -dc 0-9)}"
-[ -n "${EVENT_NAME:-}" ] && echo "[redline] event name: $EVENT_NAME"
+# The event name is remembered (outside the repo) so a restart can never silently switch back to another event.
+STATE="$HOME/.redline"; mkdir -p "$STATE"
+if [ -n "${EVENT_NAME:-}" ]; then printf '%s' "$EVENT_NAME" > "$STATE/event-name"
+elif [ -s "$STATE/event-name" ]; then EVENT_NAME="$(cat "$STATE/event-name")"; fi
+[ -n "${EVENT_NAME:-}" ] && export EVENT_NAME && echo "[redline] event name: $EVENT_NAME"
 nohup node_modules/.bin/tsx apps/server/src/index.ts > /tmp/redline-server.log 2>&1 &
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:2567/api/health >/dev/null 2>&1 && break; sleep 1; done
 grep "\[server\]" /tmp/redline-server.log | head -3
