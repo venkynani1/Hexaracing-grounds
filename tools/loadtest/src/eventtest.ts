@@ -345,6 +345,76 @@ async function main() {
   measuring = false;
   const progressAtFinish = new Map([...paths.entries()].map(([c, P]) => [c, { ...P }]));
   const preFinish = await getJson(`${URL_}/api/standings`);
+  /* 4b. Levels 3–4 under load on the TEST server: every role plays its new mechanic through the real HTTP API */
+  const L34 = { safeHolds: 0, safeHoldErrors: 0, jams: 0, blocked: 0, shields: 0, alliances: 0, duelAnswers: 0, duelCorrect: 0, offers: 0, accepted: 0, depot: 0, errors: [] as string[] };
+  if (!args.has('skip-levels')) {
+    const call = async (token: string, path: string, body: unknown) => {
+      const r = await fetch(`${URL_}${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as Record<string, any>;
+      if (!r.ok && L34.errors.length < 12) L34.errors.push(`${path} ${r.status} ${j.error ?? ''}`);
+      return { ok: r.ok, body: j };
+    };
+    const by = (role: string) => clients.filter((c) => c.role === role);
+    const view = (c: Client) => c.bot.lastSquad as any;
+    await host('/api/host/warp', 'POST', { toElapsedMs: Math.round(24.4 * 60_000) });
+    await sleep(4000);
+    // Racers: safe-hold during the open navigation puzzle, then release
+    for (const c of by('RACER')) {
+      const r = await call(c.session.sessionToken, '/api/squad/safe-hold', { on: true });
+      if (r.ok) L34.safeHolds++;
+      else L34.safeHoldErrors++;
+    }
+    await sleep(3000);
+    for (const c of by('RACER')) await call(c.session.sessionToken, '/api/squad/safe-hold', { on: false });
+    // Deceivers: every third raises a shield first; everyone jams its first legal target
+    for (const [i, c] of by('DECEIVER').entries()) if (i % 3 === 0 && (await call(c.session.sessionToken, '/api/squad/intel/shield', {})).ok) L34.shields++;
+    await sleep(1500);
+    for (const c of by('DECEIVER')) {
+      const t = view(c)?.intel?.deceiver?.targets?.[0]?.teamId;
+      if (!t) continue;
+      const r = await call(c.session.sessionToken, '/api/squad/intel/jam', { target: t });
+      if (r.body.landed) L34.jams++;
+      if (r.body.blocked) L34.blocked++;
+    }
+    // Captains: squads 1+2 and 3+4 form alliances
+    const caps = by('CAPTAIN');
+    for (const k of [0, 2]) {
+      const a = caps[k];
+      const b = caps[k + 1];
+      if (!a || !b) continue;
+      await call(a.session.sessionToken, '/api/squad/intel/ally/propose', { target: b.session.teamId });
+      if ((await call(b.session.sessionToken, '/api/squad/intel/ally/accept', { from: a.session.teamId })).ok) L34.alliances++;
+    }
+    // Level 4: matchmaking at 33:00, duels answered from the Captain's own options, trades, depot
+    await host('/api/host/warp', 'POST', { toElapsedMs: Math.round(33.3 * 60_000) });
+    await sleep(5000);
+    for (const c of caps) {
+      const d = view(c)?.rival?.duel;
+      for (const opt of (d?.options ?? []).slice(0, 2)) {
+        const r = await call(c.session.sessionToken, '/api/squad/rival/duel', { answer: opt, key: `lt-${c.session.teamId}-${opt}` });
+        L34.duelAnswers++;
+        if (r.body.correct) {
+          L34.duelCorrect++;
+          break;
+        }
+        if (r.body.result && r.body.result !== 'pending') break;
+      }
+    }
+    for (const c of caps) {
+      const rv = view(c)?.rival;
+      if (!rv) continue;
+      if (!rv.partner) {
+        if ((await call(c.session.sessionToken, '/api/squad/rival/depot', { option: 'fuel' })).ok) L34.depot++;
+      } else if (c.session.teamId < rv.partner.teamId && (await call(c.session.sessionToken, '/api/squad/rival/offer', { give: { kind: 'credits', amount: 20 }, want: { kind: 'fuel', amount: 5 }, key: `lt-offer-${c.session.teamId}` })).ok) L34.offers++;
+    }
+    await sleep(2500);
+    for (const c of caps) {
+      const off = (view(c)?.rival?.trade?.offers ?? []).find((o: any) => o.from === 'them' && o.status === 'open');
+      if (off && (await call(c.session.sessionToken, '/api/squad/rival/respond', { offerId: off.id, accept: true })).body.status === 'accepted') L34.accepted++;
+    }
+    log({ ev: 'levels34', ...L34 });
+  }
+
   for (const [min, wait] of [[49.9, 8], [51.6, 12], [55.1, 20], [58.1, 12], [60.1, 6]] as const) {
     await host('/api/host/warp', 'POST', { toElapsedMs: Math.round(min * 60_000) });
     await sleep(wait * 1000);
@@ -372,7 +442,11 @@ async function main() {
       (select count(*) from scoring_events s join teams t on t.id=s.team_id where t.event_id=$1)::int scoring_events,
       (select count(*) from vehicle_checkpoints v join teams t on t.id=v.team_id where t.event_id=$1)::int checkpoints,
       (select count(*) from recovery_snapshots where event_id=$1)::int snapshots,
-      (select count(*) from events)::int events_in_db`, [evRow.id]))[0];
+      (select count(*) from events)::int events_in_db,
+      (select count(*) from scoring_events s join teams t on t.id=s.team_id where t.event_id=$1 and s.source_type in ('rival_duel'))::int duel_rows,
+      (select count(*) from scoring_events s join teams t on t.id=s.team_id where t.event_id=$1 and s.source_type in ('rival_trade'))::int trade_rows,
+      (select count(*) from scoring_events s join teams t on t.id=s.team_id where t.event_id=$1 and s.source_type in ('intel_jam','intel_block'))::int intel_rows,
+      (select count(*) from fuel_transactions f join teams t on t.id=f.team_id where t.event_id=$1 and f.reason in ('rival_trade','rival_depot'))::int trade_ledger`, [evRow.id]))[0];
   const raw = await q('select s.team_id, s.category, s.points from scoring_events s join teams t on t.id=s.team_id where t.event_id=$1', [evRow.id]);
   await dbh.close();
   const mismatches: string[] = [];
@@ -410,6 +484,15 @@ async function main() {
   check('race completion', ovEnd.clock?.status === 'FINISHED' && final.final === true && finalStandings.length === SQUADS, `${ovEnd.clock?.status}, final=${final.final}, ${finalStandings.length} teams`, `FINISHED, final standings for ${SQUADS}`);
   check('leaderboard = independent SQL over scoring_events', mismatches.length === 0 && ranksOk, mismatches.length ? mismatches.slice(0, 5).join('; ') : `${finalStandings.length} teams match, ranks ordered`, 'exact');
   check('persistence: rows in test DB', counts.teams === SQUADS && counts.players === SQUADS * 4 && counts.sessions >= SQUADS * 4 && counts.snapshots > 0, JSON.stringify(counts), `${SQUADS} teams, ${SQUADS * 4} players, sessions, snapshots`);
+  if (!args.has('skip-levels')) {
+    const pairs = Math.floor(SQUADS / 2);
+    check('L3 safe-hold (every Racer, open navigation puzzle)', L34.safeHolds === SQUADS, `${L34.safeHolds}/${SQUADS} holds, ${L34.safeHoldErrors} refused`, `${SQUADS}`);
+    check('L3 Deceiver jams + shields landed and scored', L34.jams > 0 && counts.intel_rows === L34.jams + L34.blocked, `${L34.jams} jams, ${L34.blocked} blocked, ${L34.shields} shields, ${counts.intel_rows} DECEPTION rows`, 'rows = landed + blocked');
+    check('L3 alliances (both Captains)', L34.alliances === Math.min(2, Math.floor(SQUADS / 2)), L34.alliances, 'as proposed');
+    check('L4 duels answered by Captains only via their own options', L34.duelAnswers > 0 && counts.duel_rows === L34.duelCorrect, `${L34.duelAnswers} answers, ${L34.duelCorrect} correct, ${counts.duel_rows} duel rows`, 'rows = correct answers');
+    check('L4 trades atomic + ledgered once', L34.accepted === L34.offers && counts.trade_rows === 2 * L34.accepted && counts.trade_ledger === 2 * L34.accepted + L34.depot, `${L34.offers} offers, ${L34.accepted} accepted (${pairs} pairs), ${L34.depot} depot, ${counts.trade_ledger} ledger rows`, 'ledger = 2×trades + depot');
+    check('L3–L4 API errors', L34.errors.every((e) => /COOLDOWN|TARGET_PROTECTED|BAD_TARGET|DUEL_DONE/.test(e)), L34.errors.join('; ') || 'none', 'only expected rule refusals');
+  }
   if (NO_LIVE) check('live event untouched', false, 'NOT RUN (--no-live-check)', 'identical before/after');
   else check('live event untouched', leaked.length === 0 && liveAfter.eventName === liveBefore.eventName && liveAfter.squads === liveBefore.squads && liveAfter.status === liveBefore.status && liveAfter.totals === liveBefore.totals, `squads ${liveBefore.squads}→${liveAfter.squads}, status ${liveBefore.status}→${liveAfter.status}, test names leaked: ${leaked.length}`, 'identical before/after');
 

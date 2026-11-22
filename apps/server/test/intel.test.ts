@@ -40,6 +40,7 @@ describe('Deceiver intel ops + alliances (24:00–42:00)', () => {
       const vB = s.room.squad!.viewFor(id(B), 'RACER', B.others[0]!.playerId);
       expect(vB.intel!.jammedForMs).toBe(INTEL.jam.durationMs);
       expect(s.room.sim.cars.get(id(B))!.held).toBeNull(); // information only — the car keeps driving
+      expect(s.room.tickerItems.some((t) => t.kind === 'jam' && /jams/.test(t.text))).toBe(true);
       expect((await post(s, '/api/squad/intel/jam', { target: id(C) }, auth(role(A, 'DECEIVER')))).body.error).toBe('COOLDOWN');
       expect((await post(s, '/api/squad/intel/jam', { target: id(B) }, auth(role(C, 'DECEIVER')))).body.error).toBe('TARGET_PROTECTED');
 

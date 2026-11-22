@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { LEVELS, formatClock, stageAt, type ConvoyTimeline, type MapMessage, type ServerMessage, type Standing, type WorldState, type ClockState } from '@redline/shared';
+import { LEVELS, formatClock, stageAt, type ConvoyTimeline, type TickerItem, type MapMessage, type ServerMessage, type Standing, type WorldState, type ClockState } from '@redline/shared';
 import { api } from '../lib/api';
 import { useWorldSocket } from '../lib/socket';
 import { useWorldMap } from '../game/useWorldMap';
@@ -21,6 +21,8 @@ export function Projector() {
   const [standings, setStandings] = useState<Standing[] | null>(null);
   const [mapId, setMapId] = useState<'test' | 'chennai' | undefined>();
   const [seed, setSeed] = useState('');
+  const [ticker, setTicker] = useState<TickerItem[]>([]);
+  const [squadNames, setSquadNames] = useState<string[]>([]);
   const listeners = useRef(new Set<(m: WorldFeed) => void>());
   const subscribe = useCallback((fn: (m: WorldFeed) => void) => {
     listeners.current.add(fn);
@@ -39,8 +41,9 @@ export function Projector() {
     if (m.t === 'map') {
       setMap(m);
       for (const fn of listeners.current) fn(m);
-    } else if (m.t === 'welcome' && m.kind === 'host') setClock(m.overview.clock);
-    else if (m.t === 'overview') setClock(m.overview.clock);
+    } else if (m.t === 'welcome' && m.kind === 'host') (setClock(m.overview.clock), setSquadNames(m.overview.squads.map((q) => q.name)));
+    else if (m.t === 'overview') (setClock(m.overview.clock), setSquadNames(m.overview.squads.map((q) => q.name)));
+    else if (m.t === 'ticker') setTicker(m.items);
     else if (m.t === 'clock') setClock(m.clock);
     else if (m.t === 'world') setWorld(m.state);
     else if (m.t === 'convoy') setTimeline(m.timeline);
@@ -80,8 +83,24 @@ export function Projector() {
   if (timeline && worldMap) {
     return (
       <Suspense fallback={null}>
-        <Finale map={worldMap} seed={seed} clock={live} offset={offset} subscribe={subscribe} timeline={timeline} standings={standings} />
+        <Finale map={worldMap} seed={seed} clock={live} offset={offset} subscribe={subscribe} timeline={timeline} standings={standings} projector />
       </Suspense>
+    );
+  }
+  if (!live || live.status === 'REGISTRATION_OPEN' || live.status === 'REGISTRATION_LOCKED' || live.status === 'COUNTDOWN') {
+    return (
+      <main className="projector proj-lobby" data-testid="projector-lobby">
+        <Brand />
+        <h1 className="proj-title">Chennai → Hexaware Siruseri</h1>
+        {live?.status === 'COUNTDOWN' ? (
+          <div className="proj-countdown" data-testid="projector-countdown">{Math.ceil(live.countdownRemainingMs / 1000)}</div>
+        ) : (
+          <>
+            <p className="proj-sub">{squadNames.length} squad{squadNames.length === 1 ? '' : 's'} registered · {squadNames.length * 4} players · waiting for START</p>
+            <div className="proj-names">{squadNames.map((n) => <span key={n}>{n}</span>)}</div>
+          </>
+        )}
+      </main>
     );
   }
   return (
@@ -90,7 +109,7 @@ export function Projector() {
         <Brand small />
         <div className="proj-clock">{live ? formatClock(live.elapsedMs) : '--:--'}</div>
         <div className="proj-stage" data-testid="projector-stage">
-          {live?.status === 'LIVE' ? stageAt(live.elapsedMs).label : live?.status === 'COUNTDOWN' ? 'Countdown' : live?.status === 'PAUSED' ? 'Paused' : 'Event lobby'}
+          {live?.status === 'LIVE' ? stageAt(live.elapsedMs).label : live?.status === 'PAUSED' ? 'Paused' : 'Event lobby'}
           {live?.status === 'LIVE' && stageAt(live.elapsedMs).level && (
             <span className="hint"> · {stageAt(live.elapsedMs).level!.purpose} · {LEVELS.map((l) => (l.n <= stageAt(live.elapsedMs).level!.n ? '●' : '○')).join('')}</span>
           )}
@@ -107,6 +126,15 @@ export function Projector() {
           ))}
         </ol>
       </div>
+      {ticker.length > 0 && (
+        <ul className="proj-ticker" data-testid="projector-ticker">
+          {ticker.slice(0, 5).map((t, i) => (
+            <li key={`${t.atMs}-${i}`} className={`k-${t.kind}`}>
+              <span className="mono">{formatClock(t.atMs)}</span> {t.text}
+            </li>
+          ))}
+        </ul>
+      )}
       {world?.announcement && <div className="proj-announce">{world.announcement.text}</div>}
     </main>
   );

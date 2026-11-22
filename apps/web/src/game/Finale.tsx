@@ -25,12 +25,24 @@ export default function Finale(props: {
   standings: Standing[] | null;
   myTeamId?: string;
   onDownloadLetter?: () => Promise<void>;
+  /** projector: show the replay control */
+  projector?: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [err, setErr] = useState('');
   const [letterMsg, setLetterMsg] = useState('');
+  // Championship reveal: results are locked server-side; this only paces the presentation.
+  // 0 final transmission → 1 places 11+ → 2 places 4–10 → 3 third → 4 second → 5 champion + members → 6 full board
+  const [step, setStep] = useState(0);
+  const [replay, setReplay] = useState(0);
+  useEffect(() => {
+    if (!props.standings) return;
+    setStep(0);
+    const id = setInterval(() => setStep((x) => Math.min(6, x + 1)), 4000);
+    return () => clearInterval(id);
+  }, [props.standings, replay]);
 
   useEffect(() => {
     let game: GameScene;
@@ -92,6 +104,42 @@ export default function Finale(props: {
       {props.standings && (
         <div className="podium" data-testid="podium">
           <h2>Championship</h2>
+          <div className="reveal" data-testid="reveal" data-step={step}>
+            {step === 0 && <div className="reveal-big">FINAL TRANSMISSION — results locked</div>}
+            {step === 1 && (
+              <div className="reveal-group">
+                {props.standings.filter((x) => x.rank > 10).map((x) => (
+                  <span key={x.teamId}>
+                    #{x.rank} {x.name} · {x.total}
+                  </span>
+                ))}
+              </div>
+            )}
+            {step === 2 && (
+              <div className="reveal-group">
+                {props.standings.filter((x) => x.rank >= 4 && x.rank <= 10).map((x) => (
+                  <span key={x.teamId}>
+                    #{x.rank} {x.name} · {x.total}
+                  </span>
+                ))}
+              </div>
+            )}
+            {step >= 3 && step <= 5 && (() => {
+              const r = step === 3 ? 3 : step === 4 ? 2 : 1;
+              const t = props.standings!.find((y) => y.rank === r);
+              return t ? (
+                <div className={`reveal-big place-${r}`} data-testid={`reveal-place-${r}`}>
+                  {r === 1 ? 'CHAMPIONS' : r === 2 ? 'SECOND PLACE' : 'THIRD PLACE'}: {t.name} · {t.total}
+                  {r === 1 && t.members?.length ? <div className="reveal-members">{t.members.join(' · ')}</div> : null}
+                </div>
+              ) : null;
+            })()}
+            {props.projector && (
+              <button className="btn ghost" onClick={() => setReplay((n) => n + 1)} data-testid="reveal-replay">
+                Replay reveal
+              </button>
+            )}
+          </div>
           <ol>
             {props.standings.slice(0, 10).map((s) => (
               <li key={s.teamId} className={s.teamId === props.myTeamId ? 'me' : ''}>

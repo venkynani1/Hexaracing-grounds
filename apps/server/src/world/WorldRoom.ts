@@ -27,6 +27,8 @@ import {
   SQUAD_RUBRIC,
   CAR_FLAG_BRAKING,
   CAR_FLAG_GHOST,
+  stageAt,
+  type TickerItem,
 } from '@redline/shared';
 import { performance } from 'node:perf_hooks';
 import { SIM_DT_MS, WorldSim, type SimCar } from './WorldSim';
@@ -566,6 +568,7 @@ export class WorldRoom {
    * persist transitions, broadcast the clock. Pure function of the clock + previous step.
    */
   async tick(): Promise<void> {
+    this.announceStage();
     const t = this.now();
     this.directorTick++;
     const snap = this.clock.snapshot(t);
@@ -777,6 +780,25 @@ export class WorldRoom {
       if (ctx.kind === 'player' && ctx.teamId === teamId && ws.readyState === ws.OPEN) ws.send(data);
     }
     this.scheduleOverview();
+  }
+
+  /* ---------------- public ticker (host + projector only; never answers or private clues) ---------------- */
+  readonly tickerItems: TickerItem[] = [];
+  private lastStage = '';
+  ticker(kind: TickerItem['kind'], text: string) {
+    const item: TickerItem = { atMs: this.clock.elapsedMs(this.now()), kind, text };
+    this.tickerItems.unshift(item);
+    this.tickerItems.length = Math.min(this.tickerItems.length, 30);
+    const data = JSON.stringify({ t: 'ticker', items: this.tickerItems.slice(0, 8) } satisfies ServerMessage);
+    for (const [ws, c] of this.clients) if (c.kind === 'host' && ws.readyState === ws.OPEN) ws.send(data);
+  }
+  private announceStage() {
+    if (this.clock.status(this.now()) !== 'LIVE') return;
+    const st = stageAt(this.clock.elapsedMs(this.now()));
+    if (st.label !== this.lastStage) {
+      if (this.lastStage) this.ticker('level', st.level ? `${st.label} — ${st.level.purpose}` : st.label);
+      this.lastStage = st.label;
+    }
   }
 
   /** Debounced host overview push. */

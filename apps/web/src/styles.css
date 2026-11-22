@@ -267,3 +267,15 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .notice { border-color: #d9a400; background: rgba(217, 164, 0, 0.1); margin-bottom: 12px; padding: 12px; line-height: 1.4; }
 .notice a { color: #ffd34d; }
 .proj-stage { font-size: 24px; font-weight: 800; letter-spacing: 0.04em; }
+.proj-lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; gap: 16px; }
+.proj-title { font-size: 48px; margin: 0; }
+.proj-sub { font-size: 22px; opacity: 0.85; }
+.proj-countdown { font-size: 220px; font-weight: 900; line-height: 1; }
+.proj-names { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; max-width: 1200px; font-size: 18px; opacity: 0.9; }
+.proj-ticker { list-style: none; margin: 8px 16px; padding: 0; font-size: 20px; }
+.proj-ticker li { padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.reveal { margin: 8px 0; min-height: 64px; }
+.reveal-big { font-size: 30px; font-weight: 900; }
+.reveal-big.place-1 { font-size: 40px; color: #ffd34d; }
+.reveal-members { font-size: 20px; font-weight: 600; margin-top: 6px; }
+.reveal-group { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 16px; }

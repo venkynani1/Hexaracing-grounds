@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { scoringEvents, teams, type Db } from '@redline/db';
+import { players, scoringEvents, teams, type Db } from '@redline/db';
 import { compareTeams, deriveTotals, tieBreakHash, type ArrivalMode, type RankableTeam, type ScoringCategory, type Standing } from '@redline/shared';
 
 /**
@@ -26,5 +26,7 @@ export async function computeStandings(
     return { teamId: t.id, name: t.name, total, byCategory, finalGateSubmittedAt: gate ? gate.createdAt.getTime() : null, tieHash: tieBreakHash(seed, t.id) };
   });
   ranked.sort(compareTeams);
-  return ranked.map((t, i) => ({ rank: i + 1, teamId: t.teamId, name: t.name, total: t.total, byCategory: t.byCategory, arrival: arrivalOf(t.teamId) }));
+  const people = await db.select({ teamId: players.teamId, name: players.displayName, slot: players.slot }).from(players).innerJoin(teams, eq(players.teamId, teams.id)).where(eq(teams.eventId, eventId));
+  const membersOf = (teamId: string) => people.filter((p) => p.teamId === teamId).sort((a, b) => a.slot - b.slot).map((p) => p.name);
+  return ranked.map((t, i) => ({ rank: i + 1, teamId: t.teamId, name: t.name, total: t.total, byCategory: t.byCategory, arrival: arrivalOf(t.teamId), members: membersOf(t.teamId) }));
 }

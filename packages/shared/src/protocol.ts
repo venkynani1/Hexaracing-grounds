@@ -160,6 +160,15 @@ export interface Standing {
   total: number;
   byCategory: Record<string, number>;
   arrival: string | null;
+  /** squad members' display names (public on the podium) */
+  members?: string[];
+}
+
+/** Public event ticker (projector / host): never contains answers or private clues. */
+export interface TickerItem {
+  atMs: number;
+  kind: 'level' | 'duel' | 'trade' | 'alliance' | 'jam' | 'info';
+  text: string;
 }
 
 export const CAR_FLAG_BRAKING = 1;
@@ -243,4 +252,5 @@ export type ServerMessage =
   | { t: 'world'; state: WorldState }
   | { t: 'convoy'; timeline: ConvoyTimeline }
   | { t: 'championship'; standings: Standing[]; computedAt: number }
+  | { t: 'ticker'; items: TickerItem[] }
   | { t: 'error'; error: string; message: string };

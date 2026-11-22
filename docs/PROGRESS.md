@@ -2,6 +2,25 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Master spec, stage 3: projector sequence + 120-player rerun with Levels 3–4
+
+- Server public ticker (`WorldRoom.ticker`, `{t:'ticker'}` to host/projector clients only): level changes,
+  duel round/winners, trades, jams/blocks, alliances. Backlog sent on host welcome.
+- Championship standings carry `members` (display names). Projector: lobby (squads joined), countdown,
+  live stage banner with level dots + ticker. Finale reveal steps every 4 s (final transmission → ranks > 10 →
+  4–10 → 3rd → 2nd → champions with members → full board), replay button on the projector.
+- `tools/loadtest/src/eventtest.ts` drives Levels 3–4 under load (safe-holds, shields, jams, alliances, duels from
+  the Captain's own options, atomic trades, depot) and checks the DB ledger.
+- Isolated 120-player run (30×4, 7.4 min wall, warped timeline, PGlite, no live server): every check PASS —
+  0 unplanned disconnects, one world every sample, tick p99 worst 9.7 ms, loop delay p99 19.4 ms, RSS 630 MB,
+  RTT p99 10 ms, racer snapshots p50 50 / p99 96 ms, reconnection storm p95 537 ms, restart recovery 2.0 s
+  downtime with identical standings, leaderboard = independent SQL; L3: 30/30 safe-holds, 13 jams / 6 blocked /
+  10 shields, 2 alliances; L4: 54 Captain answers, 14 duel rows, 15/15 trades, 30 ledger rows (exactly once).
+  "Live event untouched" = NOT RUN by design (`--no-live-check`; live codespace unreachable).
+- Tests: unit 118/118, e2e 9/9, typecheck clean.
+- Still open: Chennai area recognisability/signage, release plan + readiness report, on-device FPS gate,
+  real-phone rehearsal, live codespace restart + deploy (needs owner approval).
+
 ## 2026-11-22 — Master spec, stage 2: Deceiver ops, alliances, Racer safe-hold, weighted scoring
 
 - `apps/server/src/rival/IntelService.ts`: signal jam (navigation display scrambled 20 s, car keeps driving),

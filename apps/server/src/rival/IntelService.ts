@@ -27,6 +27,8 @@ interface TeamIntel {
 
 export class IntelService {
   private st = new Map<string, TeamIntel>();
+  /** public ticker hook (projector/host) */
+  onPublic: (kind: 'jam' | 'alliance', text: string) => void = () => {};
   private names = new Map<string, string>();
 
   constructor(
@@ -96,6 +98,7 @@ export class IntelService {
       this.note(actor.teamId, `Jam on ${this.name(target)} was BLOCKED by their shield`);
       this.note(target, `Shield blocked a jam from ${this.name(actor.teamId)} (+${INTEL.shield.blockPoints})`);
       await this.squad.award(target, 'DECEPTION', INTEL.shield.blockPoints, 'Intel: jam blocked', 'intel_block', `block:${actor.teamId}:${me.jamsUsed}`);
+      this.onPublic('jam', `${this.name(target)}'s shield blocks a jam from ${this.name(actor.teamId)}`);
       await audit(this.db, this.eventId, 'player', actor.playerId, 'intel.jam_blocked', { from: actor.teamId, to: target }).catch(() => undefined);
       this.push(actor.teamId, target);
       return { landed: false, blocked: true };
@@ -105,6 +108,7 @@ export class IntelService {
     this.note(actor.teamId, `Jammed ${this.name(target)}'s navigation (+${INTEL.jam.points})`);
     this.note(target, `Navigation jammed by ${this.name(actor.teamId)} for ${INTEL.jam.durationMs / 1000} s`);
     await this.squad.award(actor.teamId, 'DECEPTION', INTEL.jam.points, 'Intel: jam landed', 'intel_jam', `jam:${actor.teamId}:${me.jamsUsed}`);
+    this.onPublic('jam', `${this.name(actor.teamId)} jams ${this.name(target)}'s navigation`);
     await audit(this.db, this.eventId, 'player', actor.playerId, 'intel.jam', { from: actor.teamId, to: target }).catch(() => undefined);
     this.push(actor.teamId, target);
     return { landed: true, blocked: false, jammedForMs: INTEL.jam.durationMs };
@@ -149,6 +153,7 @@ export class IntelService {
     other.proposalsFrom = other.proposalsFrom.filter((x) => x !== actor.teamId);
     this.note(actor.teamId, `Alliance formed with ${this.name(from)}`);
     this.note(from, `Alliance formed with ${this.name(actor.teamId)}`);
+    this.onPublic('alliance', `Alliance formed: ${this.name(actor.teamId)} + ${this.name(from)}`);
     await audit(this.db, this.eventId, 'player', actor.playerId, 'intel.alliance', { a: actor.teamId, b: from }).catch(() => undefined);
     this.push(actor.teamId, from);
     return { ally: from };

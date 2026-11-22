@@ -54,6 +54,10 @@ describe('Level 4: rival duels + trades', () => {
       expect(again.body).toMatchObject({ result: 'won' });
       const b = await post(s, '/api/squad/rival/duel', { answer, key: 'k2' }, auth(paired[1]!.captain.sessionToken));
       expect(b.body).toMatchObject({ correct: true, result: 'second', points: RIVAL.points.duelSecond });
+      // public ticker announced the round and the duel winner (no answers in it)
+      expect(s.room.tickerItems.some((t) => t.kind === 'duel' && /rival round/.test(t.text))).toBe(true);
+      expect(s.room.tickerItems.some((t) => t.kind === 'duel' && /wins the duel/.test(t.text))).toBe(true);
+      expect(s.room.tickerItems.every((t) => !t.text.includes(answer))).toBe(true);
       const soloTeam = sq.find((x) => rival.viewFor(x.captain.teamId, 'CAPTAIN')!.partner === null)!;
       const wrong1 = await post(s, '/api/squad/rival/duel', { answer: 'nope', key: 'w1' }, auth(soloTeam.captain.sessionToken));
       expect(wrong1.body).toMatchObject({ correct: false, result: 'pending' });

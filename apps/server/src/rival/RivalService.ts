@@ -54,6 +54,8 @@ export class RivalService {
   private depotUsed = new Set<string>();
   private keys = new Map<string, unknown>();
   private matched = false;
+  /** public ticker hook (projector/host); never answers */
+  onPublic: (kind: 'duel' | 'trade' | 'info', text: string) => void = () => {};
 
   constructor(
     private readonly db: Db,
@@ -105,6 +107,7 @@ export class RivalService {
       if (b) (this.partner.set(b, a), this.pairOf.set(b, id));
     }
     for (const t of ids) this.duels.set(t, { attempts: 0, result: 'pending', points: 0 });
+    this.onPublic('duel', `Level 4 rival round: ${this.pairs.filter((p) => p.b).length} duels${this.pairs.some((p) => !p.b) ? ' + 1 solo route' : ''} — Captains, first correct answer wins`);
     await audit(this.db, this.eventId, 'director', null, 'rival.match', { pairs: this.pairs.map((p) => [p.a, p.b]) }).catch(() => undefined);
     this.squad.onTeamChanged(null);
   }
@@ -132,6 +135,8 @@ export class RivalService {
       d.points = d.result === 'won' ? RIVAL.points.duelWin : d.result === 'second' ? RIVAL.points.duelSecond : RIVAL.points.duelSolo;
       await this.squad.award(actor.teamId, 'CAPTAIN_STRATEGY', d.points, `Rival duel (${d.result})`, 'rival_duel', `duel:${pairId}:${actor.teamId}`);
       res = { correct: true, result: d.result, points: d.points };
+      const p2 = this.partner.get(actor.teamId);
+      if (d.result === 'won' && p2) this.onPublic('duel', `${this.names.get(actor.teamId) ?? 'A squad'} wins the duel against ${this.names.get(p2) ?? 'their rival'}`);
     } else {
       if (d.attempts >= RIVAL.duelMaxAttempts) d.result = 'lost';
       res = { correct: false, result: d.result, points: 0 };
@@ -194,6 +199,7 @@ export class RivalService {
     await this.ledger(o.from, o.give, o.want, `trade:${o.id}:${o.from}`);
     await this.ledger(o.to, o.want, o.give, `trade:${o.id}:${o.to}`);
     for (const t of [o.from, o.to]) await this.squad.award(t, 'CAPTAIN_STRATEGY', RIVAL.points.trade, 'Rival trade completed', 'rival_trade', `trade:${pairId}:${t}`);
+    this.onPublic('trade', `Trade sealed: ${this.names.get(o.from) ?? 'a squad'} ⇄ ${this.names.get(o.to) ?? 'a squad'}`);
     await audit(this.db, this.eventId, 'player', actor.playerId, 'rival.trade', { offer: o.id, from: o.from, to: o.to, give: o.give, want: o.want }).catch(() => undefined);
     this.notifyPair(actor.teamId);
     return { status: o.status };

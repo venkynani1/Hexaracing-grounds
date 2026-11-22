@@ -131,6 +131,8 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const intel = new IntelService(db.db, event.id, String(event.seed), squad, () => clock.elapsedMs(now()));
   squad.intelView = (teamId, role) => intel.viewFor(teamId, role);
   room.attachIntel(intel);
+  rival.onPublic = (kind, text) => room.ticker(kind, text);
+  intel.onPublic = (kind, text) => room.ticker(kind, text);
   if (clock.started) {
     // Crash recovery: restore the newest snapshot (PAUSED for the host), else fall back to a fresh spawn.
     const [latest] = await db.db
@@ -410,6 +412,7 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
           room.bindHost(ws);
           clearTimeout(helloTimeout);
           send(ws, { t: 'welcome', kind: 'host', roomId: room.roomId, overview: await room.overview() });
+          if (room.tickerItems.length) send(ws, { t: 'ticker', items: room.tickerItems.slice(0, 8) });
           room.sendWorldStateTo(ws);
           room.sendFinaleTo(ws);
         }
