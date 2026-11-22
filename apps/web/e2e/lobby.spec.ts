@@ -112,6 +112,9 @@ test('M5: Chennai course guidance + OSM attribution in-game and in credits', asy
   await expect(p.getByTestId('osm-attribution')).toContainText('© OpenStreetMap contributors');
   await expect(p.getByTestId('osm-attribution')).toContainText('ODbL');
   await expect(p.getByTestId('checkpoint-guide')).toContainText(/Checkpoint \d+\/10/);
+  // area recognisability: real area name (OSM place) at the car, e.g. "Park Town" near Chennai Central
+  await expect(p.getByTestId('location')).toBeVisible({ timeout: 15_000 });
+  await expect(p.getByTestId('location')).toContainText(/[A-Z][a-z]+/);
   await p.screenshot({ path: 'test-results/m5-racer.png' });
   const c = await (await browser.newContext()).newPage();
   await c.goto('/credits');

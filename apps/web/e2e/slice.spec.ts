@@ -21,7 +21,7 @@ test('slice: loads, renders, touch drives the car, weather toggles, acceptance r
   // acceptance mode (15 s here) → gate report with all checks
   await expect(page.getByTestId('accept-result')).toBeVisible({ timeout: 90_000 });
   const report = await page.evaluate(() => (window as unknown as { __accept: { report: Record<string, number>; gate: { checks: unknown[] } } }).__accept);
-  expect(report.gate.checks.length).toBe(7);
+  expect(report.gate.checks.length).toBe(8); // incl. 'Uninterrupted run'
   expect(report.report.frames).toBeGreaterThan(10);
   expect(report.report.textureMemMB).toBeLessThan(64);
   expect(errors).toEqual([]);

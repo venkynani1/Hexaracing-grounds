@@ -26,7 +26,8 @@
     "db:verify": "npm run db:verify -w @redline/db",
     "loadtest": "npm run start -w @redline/loadtest --",
     "map:extract": "python3 tools/mapbuild/extract.py tools/mapbuild/data/raw/tamil_nadu.osm.pbf tools/mapbuild/data/raw/chennai-extract.json",
-    "map:build": "npm run build -w @redline/mapbuild",
+    "map:build": "npm run build -w @redline/mapbuild && npm run places -w @redline/mapbuild",
+    "map:places": "python3 tools/mapbuild/places.py tools/mapbuild/data/raw/tamil_nadu.osm.pbf tools/mapbuild/data/raw/chennai-places.json && npm run places -w @redline/mapbuild",
     "test:perf": "vitest run --config vitest.perf.config.ts",
     "assets:fetch": "npm run fetch -w @redline/assets",
     "assets:build": "npm run build -w @redline/assets"

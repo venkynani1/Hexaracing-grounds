@@ -81,6 +81,9 @@ export interface WorldMap {
   /** Squads per start location (spawn crowding). */
   maxSquadsPerStart: number;
   stations: StationDef[];
+  /** real area names (OSM place nodes) + roadside signs per course — Chennai only */
+  areas?: AreaIndex;
+  signs?: RouteSign[];
 }
 
 /** Compact JSON as written by tools/mapbuild. */
@@ -106,6 +109,8 @@ export interface MapJson {
   maxSquadsPerStart: number;
   stations: StationDef[];
 }
+
+import type { AreaIndex, RouteSign } from './areas';
 
 export function edgeHalfWidth(lanes: number, oneway: boolean, laneWidth: number) {
   return (oneway ? (lanes * laneWidth) / 2 : lanes * laneWidth) + 1;

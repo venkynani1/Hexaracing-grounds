@@ -5,6 +5,8 @@ import {
   Interpolator,
   PHASES,
   stageAt,
+  nearestEdge,
+  roadLabel,
   Predictor,
   ProceduralBuildings,
   forwardSpeed,
@@ -72,6 +74,9 @@ interface Hud {
   stDist: number;
   stAngle: number;
   held: boolean;
+  /** real road (OSM name) and area (OSM place) at the car */
+  road: string;
+  area: string;
 }
 
 const STEP_MS = 50;
@@ -93,6 +98,19 @@ export default function RacerView(props: RacerViewProps) {
   }, [jamMs, props.squad]);
   const propsRef = useRef(props);
   propsRef.current = props;
+  // "Entering <area>" notice: shown for 4 s whenever the area changes (after the first fix)
+  const [entering, setEntering] = useState<{ name: string; at: number } | null>(null);
+  const areaRef = useRef('');
+  useEffect(() => {
+    const a = hud?.area ?? '';
+    if (!a || a === areaRef.current) return;
+    const first = !areaRef.current;
+    areaRef.current = a;
+    if (first) return;
+    setEntering({ name: a, at: performance.now() });
+    const t = setTimeout(() => setEntering(null), 4000);
+    return () => clearTimeout(t);
+  }, [hud?.area]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -258,6 +276,8 @@ export default function RacerView(props: RacerViewProps) {
             };
           })(),
           cells: game.loadedCells,
+          road: roadLabel(net.edges[nearestEdge(net, pose.x, pose.z, 40).edge]?.name) ?? '',
+          area: map.areas?.at(pose.x, pose.z)?.name ?? '',
           ...(() => {
             let best: { name: string; d: number; a: number } | null = null;
             for (const st of map.stations) {
@@ -312,6 +332,19 @@ export default function RacerView(props: RacerViewProps) {
         phase={clock?.status === 'LIVE' ? stageAt(clock.elapsedMs).label || phase?.label || '' : clock?.status === 'COUNTDOWN' ? 'Ignition' : clock?.status ?? ''}
         time={clock?.status === 'COUNTDOWN' ? String(Math.ceil(clock.countdownRemainingMs / 1000)) : formatClock(elapsed)}
       />
+      {hud && (hud.road || hud.area) && (
+        <div className="rh-location" data-testid="location">
+          {hud.road && <span className="rh-loc-road">{hud.road}</span>}
+          {hud.road && hud.area && <span className="rh-loc-sep"> · </span>}
+          {hud.area && <span className="rh-loc-area">{hud.area}</span>}
+        </div>
+      )}
+      {entering && (
+        <div className="rh-entering" key={entering.at} data-testid="entering-area">
+          <small>Entering</small>
+          {entering.name}
+        </div>
+      )}
       <div className="rh-tools">
         <button className="rh-chip" onClick={() => setCam(cams[(cams.indexOf(cam) + 1) % cams.length]!)} data-testid="btn-camera">
           {cam}

@@ -2,6 +2,24 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Area recognisability: real Chennai area names + roadside signs
+
+- `tools/mapbuild/places.py` (pyosmium) → 819 OSM `place=*` nodes in the bbox; `tools/mapbuild/src/places.ts` keeps
+  the 182 near any course, and generates 203 roadside signs along the 7 courses: blue place-name boards where the
+  area changes (500 m hysteresis, no repeat within 2.5 km) + green Hexaware direction signs (distance in real km,
+  next area) before every checkpoint, all on the LEFT verge, clear of every carriageway. Output
+  `packages/shared/src/map/chennai.places.json` (35 KB, ODbL-attributed; ignored if its mapVersion ≠ the graph).
+  The road graph is untouched. `npm run map:places` regenerates.
+- Shared `AreaIndex` / `roadLabel` (`packages/shared/src/map/areas.ts`); `chennaiMap()` attaches `areas` + `signs`.
+- Web: `render/signs.ts` streams only signs within 600 m (≤ ~6 live; text drawn on canvas, original artwork, no
+  logos). Racer HUD: road (OSM name, "OMR — Rajiv Gandhi Salai") + area under the minimap; "Entering <area>" board
+  for 4 s on each area change.
+- Example sequence (Tambaram course): East Tambaram → Rajakilpakkam → Medavakkam → Perumbakkam → Sholinganallur →
+  Padur → Kelambakkam → Padur → Kazhipattur (the Kelambakkam detour is the disclosed route-normalisation landmark).
+- Tests: `packages/shared/test/areas.test.ts` (known places at start locations/destination, ≥ 5 boards + a
+  direction sign per checkpoint per course, signs off the road, distances count down); e2e M5 asserts the location
+  line. Unit 122/122, e2e 9/9 (slice e2e updated for the new gate row), typecheck clean.
+
 ## 2026-11-22 — First on-device gate run (Realme RMX5110, Mali-G615, 4 GB, Chrome 156)
 
 - `/benchmark` scene B (road + vegetation), medium, 3 min autopilot: median 60.2 FPS, 1% low 30.7, p95 21.8 ms,

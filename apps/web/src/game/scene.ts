@@ -7,6 +7,7 @@
  * (wet in rain), painted kerbs, paver footpaths, medians, lane markings, zebra crossings, textured buildings,
  * LED street lights, palms, rain/tyre-smoke/nitro particles. Quality presets trade effects for frame rate.
  */
+import { RouteSigns } from './render/signs';
 import {
   Color3,
   Color4,
@@ -118,6 +119,7 @@ export class GameScene {
   private pending: string[] = [];
   private ground: Mesh;
   private gatePos = Vector3.Zero();
+  private readonly routeSigns: RouteSigns | null;
   /** Resolves once the licensed assets are loaded (or failed and fell back). */
   readonly ready: Promise<void>;
 
@@ -189,6 +191,7 @@ export class GameScene {
     this.traffic = new TrafficRenderer(scene, null);
     this.buildStations(map);
     this.buildGate(map);
+    this.routeSigns = map.signs?.length && !ablate.noDetail ? new RouteSigns(scene, map.signs) : null;
     this.applyQuality();
     this.inst = new SceneInstrumentation(scene);
     this.ready = this.loadAssets();
@@ -288,6 +291,7 @@ export class GameScene {
   private streamCells(x: number, z: number) {
     this.ground.position.x = Math.round(x / 300) * 300;
     this.ground.position.z = Math.round(z / 300) * 300;
+    this.routeSigns?.update(x, z);
     const here = cellOf(x, z);
     const R = Math.ceil(PRESETS[this.quality].draw / CELL);
     const [cx, cz] = here.split(',').map(Number) as [number, number];
@@ -713,6 +717,7 @@ export class GameScene {
       activeMeshes: s.getActiveMeshes().length,
       activeIndices: s.getActiveIndices(),
       cells: this.cells.size,
+      routeSigns: this.routeSigns?.liveCount ?? 0,
     };
   }
 

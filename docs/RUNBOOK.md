@@ -9,7 +9,7 @@
 | Web client (`apps/web`) | **Vercel** (static build) | Public env only: `VITE_SERVER_URL`, `VITE_WS_URL`. `apps/web/vercel.json` rewrites SPA routes. |
 | Game server (`apps/server`) | **Long-running host**: Fly.io / Railway / Render / a VM | One always-on instance with **dedicated CPU** (≥ 2 vCPU). `apps/server/Dockerfile`, `apps/server/fly.toml.example`. |
 | Database | **Neon PostgreSQL** (pooled URL) | Server is the only DB client. Warm the compute before the event (free tier auto-suspends). |
-| Map data | Bundled (`packages/shared/src/map/chennai.map.json`, ODbL) | Re-generate with `npm run map:extract && npm run map:build` (needs the OSM PBF). |
+| Map data | Bundled (`packages/shared/src/map/chennai.map.json`, ODbL) | Re-generate with `npm run map:extract && npm run map:places && npm run map:build` (needs the OSM PBF). Area names/signs: `packages/shared/src/map/chennai.places.json` (ignored if its `mapVersion` ≠ the graph's). |
 
 ## 2. Configuration
 Server secrets (platform secret store — never commit, never in the image):

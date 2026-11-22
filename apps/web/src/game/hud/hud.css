@@ -92,3 +92,15 @@
 .slice-result pre { font: 10px/1.35 ui-monospace, monospace; white-space: pre-wrap; opacity: 0.8; }
 .slice-result-actions { display: flex; gap: 8px; margin-bottom: 8px; }
 @media (max-width: 520px) { .rh-tag { max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; } }
+
+/* Location: real road (OSM) · area (OSM place) — under the race clock */
+.rh-location { position: absolute; right: 12px; top: calc(max(10px, env(safe-area-inset-top)) + 152px); max-width: min(40vw, 260px); padding: 4px 9px; border-radius: 8px; background: rgba(10, 12, 18, 0.5); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; line-height: 1.3; color: rgba(255, 255, 255, 0.9); text-align: right; display: flex; flex-direction: column; pointer-events: none; }
+.rh-location > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 900px) { .rh-location { top: calc(max(10px, env(safe-area-inset-top)) + 212px); } }
+.rh-loc-road { color: rgba(255, 255, 255, 0.7); }
+.rh-loc-area { font-weight: 700; }
+.rh-loc-sep { display: none; }
+/* "Entering <area>" — styled like a blue Indian place board, fades out */
+.rh-entering { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; padding: 8px 22px 10px; border-radius: 6px; background: #0b4a9c; border: 2px solid #fff; color: #fff; font-size: clamp(18px, 4.6vw, 28px); font-weight: 800; letter-spacing: 0.01em; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); pointer-events: none; animation: rh-enter 4s ease forwards; }
+.rh-entering small { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.8; }
+@keyframes rh-enter { 0% { opacity: 0; transform: translate(-50%, 6px); } 10%, 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }

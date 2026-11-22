@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsx src/build.ts",
+    "places": "tsx src/places.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": { "@redline/shared": "*", "tsx": "^4.23.0" }
