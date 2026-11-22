@@ -266,3 +266,4 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .bench-launcher .btn.primary { display: inline-block; margin: 6px 0 12px; }
 .notice { border-color: #d9a400; background: rgba(217, 164, 0, 0.1); margin-bottom: 12px; padding: 12px; line-height: 1.4; }
 .notice a { color: #ffd34d; }
+.proj-stage { font-size: 24px; font-weight: 800; letter-spacing: 0.04em; }

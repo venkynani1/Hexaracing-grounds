@@ -36,3 +36,19 @@ device and graphics preset cannot change any of these.
 
 ## Tie-breaks (predeclared)
 Total → Team assessments → Coding → Driving → earliest final gate submission (server timestamp of the access-code scoring row) → `hash32(seed:tiebreak:teamId)` ascending. Standings are computed from `scoring_events` rows in Postgres (`apps/server/src/gate/championship.ts`).
+
+## Level 4 — Trade & Collaborate (rival system)
+Automatic at 33:00 (no host action). Squads are ranked by current score (ties: `tieBreakHash`) and adjacent ranks are
+paired; with an odd count the last squad takes a solo route. All points go to **CAPTAIN_STRATEGY** (cap 100), each with
+an idempotent `sourceId`.
+
+| Action | Window | Points |
+|---|---|---|
+| Duel — first correct Captain of the pair | 33:00–37:00, 2 attempts | 30 |
+| Duel — second correct Captain | same | 10 |
+| Duel — solo squad correct | same | 20 |
+| Trade completed (both Captains agreed) | 33:00–42:00, one per pair | 10 each |
+| Depot exchange (solo path, once per squad) | 33:00–42:00 | 5 |
+
+Trade bounds: credits 10–150, fuel 5–25 % (never below 10 % after giving), nitro 1; offers expire after 90 s; both
+balances re-checked at acceptance and applied in one step; one `fuel_transactions` ledger row per squad.

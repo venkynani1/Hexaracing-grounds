@@ -11,6 +11,8 @@ import {
   type WorldState,
   type PitView,
   type GateView,
+  type RivalView,
+  type TradeKind,
 } from '@redline/shared';
 import { api, HttpError, type SubmitResult } from '../lib/api';
 
@@ -64,6 +66,7 @@ export function RoleConsole({ view, token, elapsedMs, world }: { view: SquadView
           {world.fuelPriceMul !== 1 && `⛽ Fuel ×${world.fuelPriceMul}`}
         </div>
       )}
+      {view.rival && view.rival.window !== 'closed' && <RivalCard rival={view.rival} role={view.role} token={token} />}
       {view.gate && view.gate.status !== 'upcoming' && <GateCard gate={view.gate} role={view.role} token={token} />}
       {view.pit && view.pit.stage !== 'done' && <PitCard pit={view.pit} role={view.role} token={token} />}
       {view.role === 'CAPTAIN' && <CaptainPanel view={view} token={token} />}
@@ -367,6 +370,96 @@ function Bluff({ c, token }: { c: ChallengeView; token: string }) {
 }
 
 /** Hexaware Gate assessment (50:00–55:00), by role. */
+/** Level 4 — Trade & Collaborate: rival duel + Captain-approved trades + depot (server-authoritative). */
+function RivalCard({ rival, role, token }: { rival: RivalView; role: SquadView['role']; token: string }) {
+  const { msg, busy, run } = useSubmit();
+  const [give, setGive] = useState<{ kind: TradeKind; amount: number }>({ kind: 'credits', amount: 50 });
+  const [want, setWant] = useState<{ kind: TradeKind; amount: number }>({ kind: 'fuel', amount: 10 });
+  const cap = role === 'CAPTAIN';
+  const d = rival.duel;
+  const kinds: TradeKind[] = ['credits', 'fuel', 'nitro'];
+  const unit = (k: TradeKind) => (k === 'fuel' ? '% fuel' : k === 'nitro' ? ' nitro' : ' credits');
+  return (
+    <section className="challenge open" data-testid="rival-card">
+      <header>
+        <b>Level 4 · Trade & Collaborate</b>
+        <span className="pts">{rival.partner ? `vs ${rival.partner.name}` : 'Solo route'}</span>
+      </header>
+      {d && rival.window === 'duel' && (
+        <div data-testid="rival-duel">
+          <p className="eyebrow">Rival duel — first correct Captain wins (+{d.result === 'pending' ? '30' : d.points})</p>
+          <p>{d.prompt}</p>
+          {d.result === 'pending' && cap && d.options ? (
+            <div className="opts wrap">
+              {d.options.map((o) => (
+                <button key={o} className="btn opt" disabled={busy} onClick={() => run(() => api.squad.rivalDuel(token, o))} data-testid="rival-duel-option">
+                  {o}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="hint" data-testid="rival-duel-result">
+              {d.result === 'pending' ? `Attempts ${d.attempts}/${d.maxAttempts}` : `Result: ${d.result}${d.points ? ` (+${d.points})` : ''}`}
+              {d.partnerSolved && ' · your rival has solved it'}
+            </p>
+          )}
+        </div>
+      )}
+      <div data-testid="rival-trade">
+        <p className="eyebrow">Trades {rival.trade.completed ? '— completed with your rival' : rival.partner ? '— both Captains must agree' : '— no rival this round: use the depot'}</p>
+        {rival.trade.offers.map((o) => (
+          <div key={o.id} className="clue" data-testid="rival-offer">
+            {o.from === 'us' ? 'We offer' : 'They offer'} {o.give.amount}
+            {unit(o.give.kind)} for {o.want.amount}
+            {unit(o.want.kind)} · <b>{o.status}</b>
+            {o.note && ` (${o.note})`}
+            {o.status === 'open' && o.from === 'them' && cap && (
+              <span>
+                {' '}
+                <button className="btn" disabled={busy} onClick={() => run(() => api.squad.rivalRespond(token, o.id, true))} data-testid="rival-accept">
+                  Accept
+                </button>{' '}
+                <button className="btn ghost" disabled={busy} onClick={() => run(() => api.squad.rivalRespond(token, o.id, false))}>
+                  Decline
+                </button>
+              </span>
+            )}
+          </div>
+        ))}
+        {cap && rival.trade.canAct && rival.partner && !rival.trade.completed && (
+          <div className="opts wrap" data-testid="rival-propose">
+            <span>Give</span>
+            <select value={give.kind} onChange={(e) => setGive({ ...give, kind: e.target.value as TradeKind })}>
+              {kinds.map((k) => <option key={k}>{k}</option>)}
+            </select>
+            <input type="number" value={give.amount} onChange={(e) => setGive({ ...give, amount: Number(e.target.value) })} style={{ width: 70 }} />
+            <span>for</span>
+            <select value={want.kind} onChange={(e) => setWant({ ...want, kind: e.target.value as TradeKind })}>
+              {kinds.map((k) => <option key={k}>{k}</option>)}
+            </select>
+            <input type="number" value={want.amount} onChange={(e) => setWant({ ...want, amount: Number(e.target.value) })} style={{ width: 70 }} />
+            <button className="btn" disabled={busy} onClick={() => run(() => api.squad.rivalOffer(token, give, want))} data-testid="rival-offer-send">
+              Propose
+            </button>
+          </div>
+        )}
+        {cap && rival.trade.canAct && !rival.trade.depotUsed && (
+          <div className="opts wrap" data-testid="rival-depot">
+            <button className="btn ghost" disabled={busy} onClick={() => run(() => api.squad.rivalDepot(token, 'fuel'))}>
+              Depot: 60 credits → 15% fuel
+            </button>
+            <button className="btn ghost" disabled={busy} onClick={() => run(() => api.squad.rivalDepot(token, 'nitro'))}>
+              Depot: 40 credits → 1 nitro
+            </button>
+          </div>
+        )}
+        {!cap && <p className="hint">Only your Captain can duel, trade or use the depot — help them decide.</p>}
+      </div>
+      {msg && <p className="hint">{msg}</p>}
+    </section>
+  );
+}
+
 function GateCard({ gate, role, token }: { gate: GateView; role: SquadView['role']; token: string }) {
   const { msg, busy, run } = useSubmit();
   const [code, setCode] = useState('');

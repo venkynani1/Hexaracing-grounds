@@ -27,6 +27,7 @@ import {
   type CodingQuestionView,
   type PitView,
   type GateView,
+  type RivalView,
   type PowerUpKind,
   type Role,
   type ScheduledChallenge,
@@ -103,6 +104,7 @@ export class SquadService {
   /** Pit view provider (PitService), filtered per role. */
   pitView: (teamId: string, role: Role) => PitView | null = () => null;
   gateView: (teamId: string, role: Role) => GateView | null = () => null;
+  rivalView: (teamId: string, role: Role) => RivalView | null = () => null;
   private readonly scores = new Map<string, ScoreRow[]>();
   private readonly idem = new Map<string, unknown>();
   private readonly lastStatus = new Map<string, string>();
@@ -284,6 +286,29 @@ export class SquadService {
 
   credits(teamId: string): number {
     return this.teams.get(teamId)?.credits ?? 0;
+  }
+
+  /** Team ids of this event (activated squads). */
+  teamIds(): string[] {
+    return [...this.teams.keys()];
+  }
+
+  /** Add credits (trades / depot); never negative. */
+  addCredits(teamId: string, amount: number) {
+    const t = this.teams.get(teamId);
+    if (t) t.credits = Math.max(0, t.credits + Math.round(amount));
+  }
+
+  inventoryOf(teamId: string, kind: PowerUpKind): number {
+    return this.teams.get(teamId)?.inventory[kind] ?? 0;
+  }
+
+  /** Adjust a power-up count; refuses to go below zero. */
+  adjustInventory(teamId: string, kind: PowerUpKind, delta: number): boolean {
+    const t = this.teams.get(teamId);
+    if (!t || t.inventory[kind] + delta < 0) return false;
+    t.inventory[kind] += delta;
+    return true;
   }
 
   /** Deduct credits (never below zero). Returns the amount actually charged. */
@@ -675,6 +700,7 @@ export class SquadService {
       credits: t.credits,
       pit: this.pitView(teamId, role),
       gate: this.gateView(teamId, role),
+      rival: this.rivalView(teamId, role),
     };
   }
 }

@@ -22,6 +22,7 @@ import { SquadService, type Actor } from './squad/SquadService';
 import { PitService } from './pit/PitService';
 import { Director } from './director/Director';
 import { GateService } from './gate/GateService';
+import { RivalService } from './rival/RivalService';
 import { computeStandings } from './gate/championship';
 import { buildOfferLetterPdf } from './gate/letters';
 import { offerLetters, players as playersT, teams as teamsT } from '@redline/db';
@@ -123,6 +124,9 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const gate = new GateService(db.db, event.id, String(event.seed), sim, squad, () => clock.elapsedMs(now()), now);
   squad.gateView = (teamId, role) => gate.viewFor(teamId, role);
   room.attachGate(gate);
+  const rival = new RivalService(db.db, event.id, String(event.seed), sim, squad, () => clock.elapsedMs(now()));
+  squad.rivalView = (teamId, role) => rival.viewFor(teamId, role);
+  room.attachRival(rival);
   if (clock.started) {
     // Crash recovery: restore the newest snapshot (PAUSED for the host), else fall back to a fresh spawn.
     const [latest] = await db.db
@@ -259,6 +263,10 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   app.post('/api/squad/pit/diagnose', async (req) => pit.diagnose(await actor(req), body(req).answer));
   app.post('/api/squad/pit/verify', async (req) => pit.verify(await actor(req), body(req).index));
   app.post('/api/squad/pit/confirm', async (req) => pit.confirm(await actor(req)));
+  app.post('/api/squad/rival/duel', async (req) => rival.duelAnswer(await actor(req), body(req).answer, body(req).key));
+  app.post('/api/squad/rival/offer', async (req) => rival.offer(await actor(req), body(req).give, body(req).want, body(req).key));
+  app.post('/api/squad/rival/respond', async (req) => rival.respond(await actor(req), body(req).offerId, body(req).accept));
+  app.post('/api/squad/rival/depot', async (req) => rival.depot(await actor(req), body(req).option));
   app.post('/api/squad/gate/escort', async (req) => gate.requestEscort(await actor(req)));
   app.post('/api/squad/gate/debug', async (req) => gate.debug(await actor(req), body(req).answer));
   app.post('/api/squad/gate/auth', async (req) => gate.auth(await actor(req), body(req).index));

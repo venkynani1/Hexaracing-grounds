@@ -62,6 +62,11 @@ export const api = {
     pitDiagnose: (token: string, answer: string) => req<{ submitted: true }>('POST', '/api/squad/pit/diagnose', { answer }, bearer(token)),
     pitVerify: (token: string, index: number) => req<{ submitted: true }>('POST', '/api/squad/pit/verify', { index }, bearer(token)),
     pitConfirm: (token: string) => req<{ serviceEndsInMs: number }>('POST', '/api/squad/pit/confirm', {}, bearer(token)),
+    rivalDuel: (token: string, answer: string) => req<{ correct: boolean; result: string; points: number }>('POST', '/api/squad/rival/duel', { answer, key: idem() }, bearer(token)),
+    rivalOffer: (token: string, give: { kind: string; amount: number }, want: { kind: string; amount: number }) =>
+      req<{ offerId: string }>('POST', '/api/squad/rival/offer', { give, want, key: idem() }, bearer(token)),
+    rivalRespond: (token: string, offerId: string, accept: boolean) => req<{ status: string; note?: string }>('POST', '/api/squad/rival/respond', { offerId, accept }, bearer(token)),
+    rivalDepot: (token: string, option: 'fuel' | 'nitro') => req<{ status: string }>('POST', '/api/squad/rival/depot', { option }, bearer(token)),
     gateEscort: (token: string) => req<{ escorting: true }>('POST', '/api/squad/gate/escort', {}, bearer(token)),
     gateDebug: (token: string, answer: string) => req<{ correct: boolean; digit: number }>('POST', '/api/squad/gate/debug', { answer }, bearer(token)),
     gateAuth: (token: string, index: number) => req<{ correct: boolean; digit: number }>('POST', '/api/squad/gate/auth', { index }, bearer(token)),

@@ -4,6 +4,7 @@ import {
   CAR_FLAG_GHOST,
   Interpolator,
   PHASES,
+  stageAt,
   Predictor,
   ProceduralBuildings,
   forwardSpeed,
@@ -299,7 +300,7 @@ export default function RacerView(props: RacerViewProps) {
       <canvas ref={canvasRef} className="game-canvas" data-testid="game-canvas" touch-action="none" />
       {error && <div className="racer-error">{error}</div>}
       <RaceClock
-        phase={clock?.status === 'LIVE' ? phase?.label ?? '' : clock?.status === 'COUNTDOWN' ? 'Ignition' : clock?.status ?? ''}
+        phase={clock?.status === 'LIVE' ? stageAt(clock.elapsedMs).label || phase?.label || '' : clock?.status === 'COUNTDOWN' ? 'Ignition' : clock?.status ?? ''}
         time={clock?.status === 'COUNTDOWN' ? String(Math.ceil(clock.countdownRemainingMs / 1000)) : formatClock(elapsed)}
       />
       <div className="rh-tools">

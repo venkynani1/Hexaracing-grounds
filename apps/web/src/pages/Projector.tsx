@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { formatClock, type ConvoyTimeline, type MapMessage, type ServerMessage, type Standing, type WorldState, type ClockState } from '@redline/shared';
+import { LEVELS, formatClock, stageAt, type ConvoyTimeline, type MapMessage, type ServerMessage, type Standing, type WorldState, type ClockState } from '@redline/shared';
 import { api } from '../lib/api';
 import { useWorldSocket } from '../lib/socket';
 import { useWorldMap } from '../game/useWorldMap';
@@ -89,6 +89,12 @@ export function Projector() {
       <header className="topbar">
         <Brand small />
         <div className="proj-clock">{live ? formatClock(live.elapsedMs) : '--:--'}</div>
+        <div className="proj-stage" data-testid="projector-stage">
+          {live?.status === 'LIVE' ? stageAt(live.elapsedMs).label : live?.status === 'COUNTDOWN' ? 'Countdown' : live?.status === 'PAUSED' ? 'Paused' : 'Event lobby'}
+          {live?.status === 'LIVE' && stageAt(live.elapsedMs).level && (
+            <span className="hint"> · {stageAt(live.elapsedMs).level!.purpose} · {LEVELS.map((l) => (l.n <= stageAt(live.elapsedMs).level!.n ? '●' : '○')).join('')}</span>
+          )}
+        </div>
         <div className="hint">{world?.rain ? 'Rain' : 'Dry'} {world?.closures.length ? `· Closed: ${world.closures.map((c) => c.label).join(', ')}` : ''}</div>
       </header>
       <div className="proj-grid">

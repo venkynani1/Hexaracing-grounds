@@ -154,3 +154,8 @@ M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUA
 - Measurement: `/slice?bench=A|B|C&rain=0|1&off=veg,traffic,scenery,fx,wetrefl,env,hero` (`OFF` in `SliceScene.ts`); probe reports sim/GPU/particles. Results: `docs/PERF_AUDIT.md` §5, raw `docs/perf/`.
 - glTF textures that end up on unlit StandardMaterials MUST load with `loadContainer(..., { srgbBuffers: false })` — otherwise they are sRGB-decoded twice (that was the black foliage). Leaf atlases are alpha-bled in `tools/assets/src/vegetation.ts` (`bleedAlpha`).
 - Docs: `docs/ENVIRONMENT.md` (vegetation inventory, verdict), `docs/PERF_AUDIT.md` (measured), `docs/ACCEPTANCE.md` (device protocol + gate), `docs/ASSET_ACQUISITION.md` (manifest + missing-asset checklist), `docs/reference/omr/` (licensed reference photos, not shipped).
+
+## Code map (Master spec — levels + rivals)
+- `packages/shared/src/levels.ts` — `LEVELS` (5 levels mapped onto the persisted phase IDs), `stageAt(elapsed)`, `RIVAL` rules, `RivalView`.
+- `apps/server/src/rival/RivalService.ts` + `content.ts` (server-only duel bank) — matchmaking at 33:00, duels, atomic trades, depot; wired in `app.ts` (`/api/squad/rival/*`) and `WorldRoom` (tick, snapshot/restore). Tests: `apps/server/test/rival.test.ts`.
+- Web: `RivalCard` in `pages/RoleConsole.tsx`; level labels via `stageAt` in RacerView, ClockPanel, Projector.

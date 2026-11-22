@@ -2,6 +2,20 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Master spec, stage 1: five levels + Level 4 rival system
+
+- Audit: one-click Director, phases, global beats, role challenges, pit/fuel, gate, convoy, championship, recovery,
+  projector and 120-player tests already existed. Missing: five named levels, rival duels/matchmaking, inter-squad
+  trades, Deceiver disruption, alliances, Driver safe-hold during puzzles.
+- Added: `packages/shared/src/levels.ts` (LEVELS over existing phase IDs, `stageAt`, RIVAL rules + view types);
+  `apps/server/src/rival/` (RivalService: automatic matchmaking, Captain-only duels from a server-only 8-pattern bank,
+  atomic Captain-approved trades, depot fallback, snapshot/restore, audit); routes `/api/squad/rival/*`;
+  Captain RivalCard; level labels in racer HUD, lobby/host clock panel and projector.
+- Tests: `rival.test.ts` (matchmaking, Captain-only, first-correct, idempotency, bounds, atomic trade + ledger, depot,
+  window close, snapshot restore). Full suite 115/115, e2e 9/9, typecheck clean.
+- Not done yet: Deceiver disruption + alliances, Driver safe-hold, scoring re-weighting to the 40/25/15/10/10 model,
+  richer projector stage sequence, 120-player isolated rerun including Level 4.
+
 ## 2026-11-21 — Backend moved to GitHub Codespaces (zero cost); Fly.io left unchanged
 
 - Server: codespace `psychic-space-chainsaw` (owner's account), public port 2567 →

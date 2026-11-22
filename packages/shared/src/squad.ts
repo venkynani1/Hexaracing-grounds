@@ -224,4 +224,6 @@ export interface SquadView {
   credits: number;
   pit: PitView | null;
   gate: GateView | null;
+  /** Level 4 rival system (duels + trades); null before matchmaking */
+  rival?: import('./levels').RivalView | null;
 }

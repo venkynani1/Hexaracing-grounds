@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { PHASES, formatClock, type ClockState } from '@redline/shared';
+import { PHASES, formatClock, stageAt, type ClockState } from '@redline/shared';
 
 export function Brand({ small = false }: { small?: boolean }) {
   return (
@@ -58,7 +58,7 @@ export function ClockPanel({ clock }: { clock: ClockState | null }) {
       break;
     case 'LIVE':
       big = formatClock(clock.elapsedMs);
-      caption = phase ? phase.label : '';
+      caption = stageAt(clock.elapsedMs).label || (phase ? phase.label : '');
       break;
     case 'PAUSED':
       big = clock.elapsedMs > 0 ? formatClock(clock.elapsedMs) : `T-${Math.ceil(clock.countdownRemainingMs / 1000)}`;
