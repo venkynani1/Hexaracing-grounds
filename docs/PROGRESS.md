@@ -2,6 +2,20 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Licensed roadside vegetation on the full streamed route
+
+- The slice's vegetation system (CC0 palms/ficus/copal/cecropia/shrubs, LOD0/LOD1 + impostors, baked unlit foliage)
+  now also runs in the main game scene: `render/roadsideVeg.ts` plants both verges of every road in each streamed
+  400 m cell (12 m spacing, 20 % gaps, second tree row on ~half the spots), deterministic per edge (same on every
+  phone), clear of carriageways, junction mouths, building lots, station pads and the gate lot. Visual only (not an
+  obstacle). `Vegetation.loadTemplates()` + `setItems()` split so the plant set follows cell streaming.
+- Presets: off on `low`; on for medium/high/ultra; follows quality changes and rain (`setWet`). `?ablate=noVeg`.
+- Measured (`/test-drive?auto=1&km=6&q=medium&bench=40`, SwiftShader in the build container — relative only):
+  no plants 16.4 median FPS / 213 draw calls / 69 MB textures; with plants 14.6–15.5 / 237 / 83 MB (≈ 6–11 % cost,
+  ~440 plants in range). One 250 ms+ hitch in one of two runs while the templates load — at race start the cars are
+  parked until 03:00, so it lands before driving. Phone measurement of the real game scene still needed:
+  `/test-drive?auto=1&bench=180&q=medium`.
+
 ## 2026-11-22 — Area recognisability: real Chennai area names + roadside signs
 
 - `tools/mapbuild/places.py` (pyosmium) → 819 OSM `place=*` nodes in the bbox; `tools/mapbuild/src/places.ts` keeps

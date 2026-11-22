@@ -8,6 +8,9 @@
  * LED street lights, palms, rain/tyre-smoke/nitro particles. Quality presets trade effects for frame rate.
  */
 import { RouteSigns } from './render/signs';
+import { roadsideVegForCell } from './render/roadsideVeg';
+import { Vegetation } from './slice/vegetation';
+import type { VegItem } from './slice/build';
 import {
   Color3,
   Color4,
@@ -60,6 +63,7 @@ export interface Ablation {
   noPost?: boolean;
   noBuildings?: boolean;
   noDetail?: boolean;
+  noVeg?: boolean;
   noIBL?: boolean;
   noTraffic?: boolean;
   noFx?: boolean;
@@ -120,6 +124,14 @@ export class GameScene {
   private ground: Mesh;
   private gatePos = Vector3.Zero();
   private readonly routeSigns: RouteSigns | null;
+  /** licensed roadside vegetation (medium+ on the real map): one plant set per streamed cell */
+  private veg: Vegetation | null = null;
+  private vegLoading = false;
+  private readonly cellVeg = new Map<string, VegItem[]>();
+  private vegDirty = false;
+  private readonly procedural: ProceduralBuildings | null;
+  private readonly exclusions: { x: number; z: number; r: number }[];
+  private readonly realMap: boolean;
   /** Resolves once the licensed assets are loaded (or failed and fell back). */
   readonly ready: Promise<void>;
 
@@ -184,6 +196,9 @@ export class GameScene {
     this.ground = g;
 
     const procedural = map.id === 'test' ? null : new ProceduralBuildings(net, seed, stationExclusions(map));
+    this.procedural = procedural;
+    this.exclusions = stationExclusions(map);
+    this.realMap = map.id !== 'test';
     const fixed = map.id === 'test' ? generateBuildings(net, seed, stationExclusions(map)) : [];
     this.builder = new WorldBuilder(scene, net, this.mats, ablate.noBuildings ? null : procedural, ablate.noBuildings ? [] : fixed, seed, { barrier: null });
     this.fx = new Fx(scene, PRESETS[quality].particles);
@@ -236,6 +251,29 @@ export class GameScene {
     }
     this.closureKey = '';
     if (this.wantTeam) this.setMyCar(this.wantTeam);
+    void this.ensureVegetation();
+  }
+
+  private vegWanted() {
+    return this.realMap && this.quality !== 'low' && !this.ablate.noVeg;
+  }
+
+  /** Load the vegetation templates once (only when the preset wants them). */
+  private async ensureVegetation() {
+    if (!this.vegWanted() || this.veg || this.vegLoading) return;
+    this.vegLoading = true;
+    const v = new Vegetation(this.scene);
+    await v.loadTemplates(['ficus', 'copal', 'cecropia', 'palm_straight', 'palm_bend', 'palm_dual', 'bush_01', 'bush_04', 'bush_05']);
+    if (this.scene.isDisposed) return;
+    this.veg = v;
+    this.vegLoading = false;
+    for (const k of this.cells.keys()) if (!this.cellVeg.has(k)) this.cellVeg.set(k, this.vegFor(k));
+    this.vegDirty = true;
+  }
+
+  private vegFor(key: string): VegItem[] {
+    const pb = this.procedural;
+    return roadsideVegForCell(this.net, key, CELL, this.seed, (x, z, r) => (pb ? pb.near(x, z, r) : []), this.exclusions);
   }
 
   /* ---------------- quality ---------------- */
@@ -304,14 +342,23 @@ export class GameScene {
           c.meshes.forEach((m) => m.dispose());
           c.detail.forEach((m) => m.dispose());
           this.cells.delete(k);
+          if (this.cellVeg.delete(k)) this.vegDirty = true;
         }
       this.pending = [...want].filter((k) => !this.cells.has(k)).sort((a, b) => cellDist(a, cx, cz) - cellDist(b, cx, cz));
       this.shadowListAt = 0;
     }
     for (let n = 0; n < 2 && this.pending.length; n++) {
       const k = this.pending.shift()!;
-      if (!this.cells.has(k)) this.cells.set(k, this.builder.buildCell(k));
+      if (!this.cells.has(k)) {
+        this.cells.set(k, this.builder.buildCell(k));
+        if (this.veg && this.vegWanted()) (this.cellVeg.set(k, this.vegFor(k)), (this.vegDirty = true));
+      }
       this.shadowListAt = 0;
+    }
+    if (this.vegDirty && this.veg) {
+      this.vegDirty = false;
+      if (this.vegWanted()) for (const k of this.cells.keys()) if (!this.cellVeg.has(k)) this.cellVeg.set(k, this.vegFor(k));
+      this.veg.setItems(this.vegWanted() ? [...this.cellVeg.values()].flat() : []);
     }
     // Street detail (lamps, palms, signs, tanks) only near the camera.
     const dr = PRESETS[this.quality].detailR;
@@ -480,6 +527,7 @@ export class GameScene {
     this.camPos = new Vector3(cx + Math.cos(t * 0.12) * r, 28 + 10 * Math.sin(t * 0.05), cz + Math.sin(t * 0.12) * r);
     this.camera.position.copyFrom(this.camPos);
     this.camera.setTarget(target);
+    this.veg?.update(this.camera);
     this.camera.fov = 0.9;
     this.camera.minZ = 1;
     this.moveSun(cx, cz);
@@ -623,6 +671,7 @@ export class GameScene {
     this.scene.environmentIntensity = s.env;
     this.scene.fogDensity = PRESETS[this.quality].fog * (rain ? 1.9 : 1);
     this.mats.setWet(rain);
+    this.veg?.setWet(rain);
     if (this.shadows) this.shadows.darkness = rain ? 0.6 : 0.15;
   }
 
@@ -636,6 +685,9 @@ export class GameScene {
     this.engine.setHardwareScalingLevel(this.scale);
     this.lastCellCheck = '';
     this.applyQuality();
+    // vegetation follows the preset: low drops every plant, medium+ loads templates on demand
+    this.vegDirty = true;
+    if (this.vegWanted()) void this.ensureVegetation();
   }
 
   private moveSun(x: number, z: number) {
@@ -676,6 +728,7 @@ export class GameScene {
     }
     this.camera.position.copyFrom(this.camPos);
     this.camera.setTarget(look);
+    this.veg?.update(this.camera);
     // Portrait phones: fix the HORIZONTAL field of view so the road isn't cropped to a slit.
     const portrait = this.engine.getAspectRatio(this.camera) < 1;
     this.camera.fovMode = portrait ? UniversalCamera.FOVMODE_HORIZONTAL_FIXED : UniversalCamera.FOVMODE_VERTICAL_FIXED;
@@ -718,6 +771,7 @@ export class GameScene {
       activeIndices: s.getActiveIndices(),
       cells: this.cells.size,
       routeSigns: this.routeSigns?.liveCount ?? 0,
+      vegInstances: this.veg?.stats.instances ?? 0,
     };
   }
 

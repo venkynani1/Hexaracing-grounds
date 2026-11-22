@@ -182,6 +182,12 @@ export class Vegetation {
   constructor(private readonly scene: Scene) {}
 
   async load(ids: string[], items: VegItem[], occ: OccluderIndex) {
+    await this.loadTemplates(ids);
+    this.setItems(items, (x, z) => sunVisible(occ, x, 2, z));
+  }
+
+  /** Load species templates (GLB LOD0/LOD1, baked) + build impostor atlas. Call once. */
+  async loadTemplates(ids: string[]) {
     const scene = this.scene;
     configureKtx2();
     for (const id of ids) {
@@ -218,17 +224,30 @@ export class Vegetation {
       this.stats.templates += lods[0].length + lods[1].length;
     }
     await this.buildImpostors();
-    this.items = items
-      .filter((i) => this.species.has(i.sp))
-      .map((i) => ({ ...i, lod: -1, sun: sunVisible(occ, i.x, 2, i.z) }));
+    // hide templates until the first update assigns instances
+    for (const s of this.species.values()) for (const l of s.lods) for (const p of l) p.mesh.thinInstanceSetBuffer('matrix', new Float32Array(16), 16, false), (p.mesh.thinInstanceCount = 0);
+  }
+
+  get loaded() {
+    return this.species.size > 0;
+  }
+
+  /** Replace the plant set (streamed worlds call this when cells load/unload); LODs re-assign on the next update. */
+  setItems(items: VegItem[], sunAt: (x: number, z: number) => number = () => 1) {
+    this.items = items.filter((i) => this.species.has(i.sp)).map((i) => ({ ...i, lod: -1, sun: sunAt(i.x, i.z) }));
     this.stats.instances = this.items.length;
+    this.bySpecies.clear();
+    this.grid.clear();
+    this.visible.clear();
     for (const it of this.items) {
       (this.bySpecies.get(it.sp) ?? this.bySpecies.set(it.sp, []).get(it.sp)!).push(it);
       const k = `${Math.floor(it.x / GRID)},${Math.floor(it.z / GRID)}`;
       (this.grid.get(k) ?? this.grid.set(k, []).get(k)!).push(it);
     }
-    // hide templates until the first update assigns instances
-    for (const s of this.species.values()) for (const l of s.lods) for (const p of l) p.mesh.thinInstanceSetBuffer('matrix', new Float32Array(16), 16, false), (p.mesh.thinInstanceCount = 0);
+    // species that lost every plant must be emptied too
+    for (const sp of this.species.keys()) if (!this.bySpecies.has(sp)) this.bySpecies.set(sp, []);
+    for (const sp of this.species.keys()) this.dirty.add(sp); // rebuild every buffer (drops removed plants)
+    this.lastCam.set(Infinity, 0, 0);
   }
 
   /** Render each species' LOD0 once into a shared atlas → LOD2 impostor cards. */

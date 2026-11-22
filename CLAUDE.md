@@ -163,4 +163,5 @@ M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUA
 - Public ticker: `WorldRoom.ticker(kind,text)` → `{t:'ticker'}` (host/projector only); services report via `onPublic`. Projector: lobby/countdown/stage banner/ticker; Finale grouped reveal (steps every 4 s, `reveal-replay`).
 - Load: `tools/loadtest/src/eventtest.ts` (isolated full event incl. Levels 3–4; `--no-live-check`, `--skip-levels`).
 - Area names + signs: `tools/mapbuild/places.py` + `src/places.ts` → `packages/shared/src/map/chennai.places.json` (`npm run map:places`); `map/areas.ts` (`AreaIndex`, `roadLabel`, `RouteSign`); web `render/signs.ts` (streamed boards), RacerView location line + "Entering" board.
+- Full-route vegetation: `render/roadsideVeg.ts` (per-cell, deterministic per edge) feeds `slice/vegetation.ts` (`loadTemplates`/`setItems`) from `GameScene` streaming; medium+ only; `ablate.noVeg`.
 - Web: `RivalCard` + `IntelCard` in `pages/RoleConsole.tsx`; jam scramble + safe-hold controls in RacerView; level labels via `stageAt` in RacerView, ClockPanel, Projector.
