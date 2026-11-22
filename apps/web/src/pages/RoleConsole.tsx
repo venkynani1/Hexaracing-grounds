@@ -12,6 +12,7 @@ import {
   type PitView,
   type GateView,
   type RivalView,
+  type IntelView,
   type TradeKind,
 } from '@redline/shared';
 import { api, HttpError, type SubmitResult } from '../lib/api';
@@ -66,6 +67,7 @@ export function RoleConsole({ view, token, elapsedMs, world }: { view: SquadView
           {world.fuelPriceMul !== 1 && `⛽ Fuel ×${world.fuelPriceMul}`}
         </div>
       )}
+      {view.intel && view.intel.open && <IntelCard intel={view.intel} token={token} />}
       {view.rival && view.rival.window !== 'closed' && <RivalCard rival={view.rival} role={view.role} token={token} />}
       {view.gate && view.gate.status !== 'upcoming' && <GateCard gate={view.gate} role={view.role} token={token} />}
       {view.pit && view.pit.stage !== 'done' && <PitCard pit={view.pit} role={view.role} token={token} />}
@@ -370,6 +372,67 @@ function Bluff({ c, token }: { c: ChallengeView; token: string }) {
 }
 
 /** Hexaware Gate assessment (50:00–55:00), by role. */
+/** Levels 3–4 — Deceiver intel ops (jam / shield) and Captain alliances. Bounded and server-authorized. */
+function IntelCard({ intel, token }: { intel: IntelView; token: string }) {
+  const { msg, busy, run } = useSubmit();
+  const s = (ms: number) => `${Math.ceil(ms / 1000)} s`;
+  return (
+    <section className="challenge open" data-testid="intel-card">
+      <header>
+        <b>Intel ops</b>
+        <span className="pts">{intel.ally ? `Allied with ${intel.ally.name}` : 'No alliance'}</span>
+      </header>
+      {intel.jammedForMs > 0 && <p className="hint bad" data-testid="intel-jammed">Your navigation is jammed for {s(intel.jammedForMs)} — the car still drives; call out directions!</p>}
+      {intel.shieldForMs > 0 && <p className="hint" data-testid="intel-shield-on">Counter-intel shield active ({s(intel.shieldForMs)})</p>}
+      {intel.deceiver && (
+        <div data-testid="intel-deceiver">
+          <p className="eyebrow">
+            Signal jam (scrambles a rival's navigation display for 20 s · {intel.deceiver.jamsLeft} left{intel.deceiver.jamReadyInMs > 0 ? ` · ready in ${s(intel.deceiver.jamReadyInMs)}` : ''})
+          </p>
+          <div className="opts wrap">
+            {intel.deceiver.targets.map((t) => (
+              <button key={t.teamId} className="btn opt" disabled={busy || intel.deceiver!.jamsLeft <= 0 || intel.deceiver!.jamReadyInMs > 0} onClick={() => run(() => api.squad.intelJam(token, t.teamId))} data-testid="intel-jam">
+                Jam {t.name}
+              </button>
+            ))}
+          </div>
+          <button className="btn ghost" disabled={busy || intel.deceiver.shieldReadyInMs > 0} onClick={() => run(() => api.squad.intelShield(token))} data-testid="intel-shield">
+            Raise shield (2 min){intel.deceiver.shieldReadyInMs > 0 ? ` — ready in ${s(intel.deceiver.shieldReadyInMs)}` : ''}
+          </button>
+        </div>
+      )}
+      {intel.alliance && !intel.ally && (
+        <div data-testid="intel-alliance">
+          {intel.alliance.incoming.map((t) => (
+            <div key={t.teamId} className="clue">
+              {t.name} proposes an alliance (allies can't jam each other){' '}
+              <button className="btn" disabled={busy} onClick={() => run(() => api.squad.allyAccept(token, t.teamId))} data-testid="ally-accept">
+                Accept
+              </button>
+            </div>
+          ))}
+          <details>
+            <summary>Propose an alliance</summary>
+            <div className="opts wrap">
+              {intel.alliance.candidates.slice(0, 30).map((t) => (
+                <button key={t.teamId} className="btn ghost" disabled={busy} onClick={() => run(() => api.squad.allyPropose(token, t.teamId))}>
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
+      {intel.log.length > 0 && (
+        <ul className="hint" data-testid="intel-log">
+          {intel.log.map((l, i) => <li key={i}>{l}</li>)}
+        </ul>
+      )}
+      {msg && <p className="hint">{msg}</p>}
+    </section>
+  );
+}
+
 /** Level 4 — Trade & Collaborate: rival duel + Captain-approved trades + depot (server-authoritative). */
 function RivalCard({ rival, role, token }: { rival: RivalView; role: SquadView['role']; token: string }) {
   const { msg, busy, run } = useSubmit();

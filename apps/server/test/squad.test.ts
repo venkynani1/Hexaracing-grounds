@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { Bot } from '@redline/loadtest';
 import { bluffEntries, bluffVotes, challengeClues, scoringEvents } from '@redline/db';
-import { BALANCE, ROLES, SQUAD_RUBRIC, forwardSpeed, type Role, type SquadView } from '@redline/shared';
+import { BALANCE, ROLES, SQUAD_RUBRIC, deriveTotals, forwardSpeed, type Role, type ScoringCategory, type SquadView } from '@redline/shared';
 import { HOST_KEY, fullSquad, get, makeServer, post, until, type TestServer } from './helpers';
 
 const MIN = 60_000;
@@ -291,7 +291,7 @@ describe('M4: private clues never leak (full message logs)', () => {
     }
     // Totals are derived from scoring_events rows, never stored.
     const t0rows = await s.db.db.select().from(scoringEvents).where(eq(scoringEvents.teamId, teams[0]!.teamId));
-    expect(s.room.squad!.scoreOf(teams[0]!.teamId).total).toBe(t0rows.reduce((a, r) => a + r.points, 0));
+    expect(s.room.squad!.scoreOf(teams[0]!.teamId).total).toBe(deriveTotals(t0rows.map((r) => ({ category: r.category as ScoringCategory, points: r.points }))).total);
     expect(BALANCE.maxSquads).toBe(30);
   });
 

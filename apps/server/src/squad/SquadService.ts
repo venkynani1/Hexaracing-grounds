@@ -28,6 +28,7 @@ import {
   type PitView,
   type GateView,
   type RivalView,
+  type IntelView,
   type PowerUpKind,
   type Role,
   type ScheduledChallenge,
@@ -105,6 +106,7 @@ export class SquadService {
   pitView: (teamId: string, role: Role) => PitView | null = () => null;
   gateView: (teamId: string, role: Role) => GateView | null = () => null;
   rivalView: (teamId: string, role: Role) => RivalView | null = () => null;
+  intelView: (teamId: string, role: Role) => IntelView | null = () => null;
   private readonly scores = new Map<string, ScoreRow[]>();
   private readonly idem = new Map<string, unknown>();
   private readonly lastStatus = new Map<string, string>();
@@ -286,6 +288,61 @@ export class SquadService {
 
   credits(teamId: string): number {
     return this.teams.get(teamId)?.credits ?? 0;
+  }
+
+  /* ---------------- Driver safe-hold during major puzzles ---------------- */
+
+  private safeHoldsUsed = new Set<string>();
+  static readonly SAFE_HOLD_MS = 90_000;
+
+  /** The open, unsolved major puzzle (four-key / navigation) for this squad, if any. */
+  private majorPuzzle(teamId: string): string | null {
+    for (const s of CHALLENGE_SCHEDULE) {
+      if ((s.kind !== 'four_key' && s.kind !== 'navigation') || this.statusOf(s) !== 'open') continue;
+      if (!this.attempts.get(`${s.id}:${teamId}`)?.solved) return s.id;
+    }
+    return null;
+  }
+
+  /** Racer parks the car in a protected hold so the squad can solve a major puzzle (≤ 90 s, once per puzzle). */
+  safeHold(actor: Actor, on: unknown) {
+    if (actor.role !== 'RACER') throw forbidden('RACER_ONLY', 'Only the Racer controls the car');
+    const car = this.sim.cars.get(actor.teamId);
+    if (!car) throw conflict('NO_CAR', 'Your car is not on the road yet');
+    if (on === false) {
+      if (car.held?.reason === 'safe') this.sim.release(actor.teamId);
+      this.onTeamChanged(actor.teamId);
+      return { held: false };
+    }
+    const puzzle = this.majorPuzzle(actor.teamId);
+    if (!puzzle) throw conflict('NO_PUZZLE', 'Safe-hold is only available while a major puzzle is open');
+    if (car.held) throw conflict('ALREADY_HELD', 'The car is already held');
+    const key = `${actor.teamId}:${puzzle}`;
+    if (this.safeHoldsUsed.has(key)) throw conflict('HOLD_USED', 'Safe-hold already used for this puzzle');
+    this.safeHoldsUsed.add(key);
+    this.sim.hold(actor.teamId, { x: car.state.x, z: car.state.z, heading: car.state.heading }, 'safe', this.sim.simMs + SquadService.SAFE_HOLD_MS);
+    this.onTeamChanged(actor.teamId);
+    return { held: true, untilMs: SquadService.SAFE_HOLD_MS };
+  }
+
+  private safeHoldView(teamId: string, role: Role) {
+    const car = this.sim.cars.get(teamId);
+    const puzzle = this.majorPuzzle(teamId);
+    const active = car?.held?.reason === 'safe';
+    return {
+      active,
+      remainingMs: active && car!.held!.until !== undefined ? Math.max(0, car!.held!.until - this.sim.simMs) : 0,
+      available: role === 'RACER' && !!car && !car.held && !!puzzle && !this.safeHoldsUsed.has(`${teamId}:${puzzle}`),
+    };
+  }
+
+  /** Release safe-holds whose puzzle was solved or closed (called every room tick). */
+  releaseFinishedSafeHolds() {
+    for (const car of this.sim.cars.values())
+      if (car.held?.reason === 'safe' && !this.majorPuzzle(car.teamId)) {
+        this.sim.release(car.teamId);
+        this.onTeamChanged(car.teamId);
+      }
   }
 
   /** Team ids of this event (activated squads). */
@@ -701,6 +758,8 @@ export class SquadService {
       pit: this.pitView(teamId, role),
       gate: this.gateView(teamId, role),
       rival: this.rivalView(teamId, role),
+      safeHold: this.safeHoldView(teamId, role),
+      intel: this.intelView(teamId, role),
     };
   }
 }

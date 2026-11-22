@@ -226,4 +226,8 @@ export interface SquadView {
   gate: GateView | null;
   /** Level 4 rival system (duels + trades); null before matchmaking */
   rival?: import('./levels').RivalView | null;
+  /** Racer safe-hold during a major puzzle (bounded, once per puzzle, auto-released) */
+  safeHold?: { available: boolean; active: boolean; remainingMs: number };
+  /** Levels 3–4 Deceiver ops + alliances */
+  intel?: import('./levels').IntelView | null;
 }

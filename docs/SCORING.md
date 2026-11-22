@@ -52,3 +52,28 @@ an idempotent `sourceId`.
 
 Trade bounds: credits 10–150, fuel 5–25 % (never below 10 % after giving), nitro 1; offers expire after 90 s; both
 balances re-checked at acceptance and applied in one step; one `fuel_transactions` ledger row per squad.
+
+## Championship weighting (40 / 25 / 15 / 10 / 10)
+Raw points per category are recorded and capped exactly as above (every row stays in `scoring_events`). The
+championship **total** is weighted (`SCORING_WEIGHTS` in `packages/shared/src/scoring.ts`, configurable):
+
+| Group | Weight | Categories (raw cap) |
+|---|---|---|
+| Cooperative mission completion | 400 | TEAM_ASSESSMENTS (150) + FUEL_MANAGEMENT (50) |
+| Puzzle accuracy and efficiency | 250 | CODING (200) + DECEPTION (150) |
+| Driving and navigation | 150 | DRIVING (250) |
+| Rival strategy | 100 | CAPTAIN_STRATEGY (100) |
+| Final gate assessment | 100 | HEXAWARE_GATE (100) |
+
+`total = round(Σ weight × capped group points / group max)`, 0–1000. Tie-breaks unchanged (raw category points).
+
+## Levels 3–4 — Deceiver intel ops and alliances (24:00–42:00)
+| Action | Who | Effect / limits | Points |
+|---|---|---|---|
+| Signal jam | Deceiver | Rival's navigation display scrambled for 20 s (car keeps driving). Targets ±3 ranks, never an ally; 3 per squad; 3-min cooldown; target protected 4 min after a jam | +5 DECEPTION |
+| Shield | Deceiver | Blocks incoming jams for 2 min; 6-min cooldown | +5 DECEPTION per blocked jam |
+| Alliance | Both Captains | One per squad; allies cannot jam each other | none |
+
+## Racer safe-hold
+While a four-key or navigation puzzle is open and unsolved, the Racer may park the car in a protected hold (≤ 90 s,
+once per puzzle). It is released automatically when the puzzle is solved or closes, or by the Racer.

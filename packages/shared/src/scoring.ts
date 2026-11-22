@@ -20,16 +20,34 @@ export interface ScoringEventLike {
 
 export type CategoryTotals = Record<ScoringCategory, number>;
 
-/** Derive capped per-category totals from scoring events. Totals are never stored, only derived. */
-export function deriveTotals(events: readonly ScoringEventLike[]): { byCategory: CategoryTotals; total: number } {
+/**
+ * Championship weighting (event brief §13, configurable): each group contributes weight × (capped group points /
+ * group maximum). Raw category points stay in the ledger and in `byCategory`; only the headline total is weighted.
+ * Weights sum to MAX_SCORE so the scale is unchanged (0–1000).
+ */
+export const SCORING_WEIGHTS: { id: string; label: string; weight: number; categories: ScoringCategory[] }[] = [
+  { id: 'missions', label: 'Cooperative mission completion', weight: 400, categories: ['TEAM_ASSESSMENTS', 'FUEL_MANAGEMENT'] },
+  { id: 'puzzles', label: 'Puzzle accuracy and efficiency', weight: 250, categories: ['CODING', 'DECEPTION'] },
+  { id: 'driving', label: 'Driving and navigation', weight: 150, categories: ['DRIVING'] },
+  { id: 'rival', label: 'Rival strategy', weight: 100, categories: ['CAPTAIN_STRATEGY'] },
+  { id: 'gate', label: 'Final gate assessment', weight: 100, categories: ['HEXAWARE_GATE'] },
+];
+
+/** Derive capped per-category totals and the weighted total from scoring events. Never stored, only derived. */
+export function deriveTotals(events: readonly ScoringEventLike[]): { byCategory: CategoryTotals; total: number; byGroup: Record<string, number> } {
   const byCategory = Object.fromEntries(Object.keys(SCORING_CAPS).map((k) => [k, 0])) as CategoryTotals;
   for (const e of events) byCategory[e.category] += e.points;
+  for (const k of Object.keys(byCategory) as ScoringCategory[]) byCategory[k] = Math.max(0, Math.min(SCORING_CAPS[k], byCategory[k]));
+  const byGroup: Record<string, number> = {};
   let total = 0;
-  for (const k of Object.keys(byCategory) as ScoringCategory[]) {
-    byCategory[k] = Math.max(0, Math.min(SCORING_CAPS[k], byCategory[k]));
-    total += byCategory[k];
+  for (const g of SCORING_WEIGHTS) {
+    const max = g.categories.reduce((a, c) => a + SCORING_CAPS[c], 0);
+    const got = g.categories.reduce((a, c) => a + byCategory[c], 0);
+    const v = max ? (g.weight * got) / max : 0;
+    byGroup[g.id] = Math.round(v * 10) / 10;
+    total += v;
   }
-  return { byCategory, total };
+  return { byCategory, total: Math.round(total), byGroup };
 }
 
 export interface RankableTeam {

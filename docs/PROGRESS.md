@@ -2,6 +2,20 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Master spec, stage 2: Deceiver ops, alliances, Racer safe-hold, weighted scoring
+
+- `apps/server/src/rival/IntelService.ts`: signal jam (navigation display scrambled 20 s, car keeps driving),
+  shield, alliances (both Captains); cooldowns, per-squad cap, target protection, ±3-rank target window, allies
+  immune; snapshot/restore; audit. Routes `/api/squad/intel/*`. IntelCard (Deceiver + Captain) and jam scramble
+  of the Racer minimap/guidance.
+- Racer safe-hold (`/api/squad/safe-hold`): only during an open, unsolved four-key/navigation puzzle; ≤ 90 s,
+  once per puzzle; auto-released on solve/close; uses the sim's held state (`reason: 'safe'`).
+- Championship total weighted 40/25/15/10/10 (`SCORING_WEIGHTS`); raw category points + caps unchanged.
+  Tie-break and totals tests rebuilt so they still exercise real ties under weighting.
+- Tests: 118/118 + perf 4/4 + e2e 9/9; typecheck clean.
+- Still open: projector stage sequence (map intro, rival/jam announcements, grouped reveal), Chennai area
+  recognisability, 120-player isolated rerun covering Levels 3–4 actions, release plan + readiness report.
+
 ## 2026-11-22 — Master spec, stage 1: five levels + Level 4 rival system
 
 - Audit: one-click Director, phases, global beats, role challenges, pit/fuel, gate, convoy, championship, recovery,

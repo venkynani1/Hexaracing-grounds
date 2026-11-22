@@ -15,6 +15,7 @@ import {
   phaseAt,
   tieBreakHash,
   type RankableTeam,
+  SCORING_WEIGHTS,
 } from '../src';
 
 const MIN = 60_000;
@@ -95,7 +96,15 @@ describe('scoring', () => {
       { category: 'DRIVING', points: 25 },
     ]);
     expect(t.byCategory.CODING).toBe(200);
-    expect(t.total).toBe(225);
+    // weighted: puzzles 250 × 200/350 = 142.9 + driving 150 × 25/250 = 15 → 158
+    expect(t.total).toBe(158);
+  });
+  it('weights follow the brief (40/25/15/10/10) and full marks = MAX_SCORE', () => {
+    expect(SCORING_WEIGHTS.map((g) => g.weight)).toEqual([400, 250, 150, 100, 100]);
+    expect(SCORING_WEIGHTS.reduce((a, g) => a + g.weight, 0)).toBe(MAX_SCORE);
+    const full = deriveTotals((Object.keys(SCORING_CAPS) as (keyof typeof SCORING_CAPS)[]).map((c) => ({ category: c, points: SCORING_CAPS[c] })));
+    expect(full.total).toBe(MAX_SCORE);
+    expect(deriveTotals([]).total).toBe(0);
   });
   it('applies the tie-break order', () => {
     const base = (id: string, over: Partial<RankableTeam['byCategory']>, gate: number | null = null): RankableTeam => {

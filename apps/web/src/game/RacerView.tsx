@@ -85,6 +85,12 @@ export default function RacerView(props: RacerViewProps) {
   const [quality, setQuality] = useState<Quality>(() => (localStorageGet('redline.quality') as Quality) || autoQuality());
   const [error, setError] = useState('');
   const mapRef = useRef<HTMLCanvasElement>(null);
+  // Deceiver signal jam: server sends the remaining duration; scramble guidance locally until then
+  const jamUntilRef = useRef(0);
+  const jamMs = props.squad?.intel?.jammedForMs ?? 0;
+  useEffect(() => {
+    jamUntilRef.current = jamMs > 0 ? performance.now() + jamMs : 0;
+  }, [jamMs, props.squad]);
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -200,11 +206,12 @@ export default function RacerView(props: RacerViewProps) {
         if (pose) dots.push({ id: 'me', x: pose.x, z: pose.z, heading: pose.heading, me: true });
         const course = lastMe?.cs ? map.courses[lastMe.cs] : undefined;
         const ctx = mapRef.current.getContext('2d');
+        const jam = jamUntilRef.current > performance.now(); // Deceiver signal jam: navigation display scrambled
         if (ctx)
           drawMap(ctx, net, dots, {
-            route: course ? courseRoute(map, course.des) : undefined,
-            marks: course?.checkpoints.map((c, i) => ({ x: c.x, z: c.z, next: i === lastMe?.cp })),
-            target: wpNode,
+            route: course && !jam ? courseRoute(map, course.des) : undefined,
+            marks: jam ? undefined : course?.checkpoints.map((c, i) => ({ x: c.x, z: c.z, next: i === lastMe?.cp })),
+            target: jam ? undefined : wpNode,
           });
       }
       game.updateTraffic(traffic.sample(serverNow));
@@ -288,6 +295,8 @@ export default function RacerView(props: RacerViewProps) {
 
   const clock = props.clock;
   const phase = PHASES.find((p) => p.id === clock?.phase);
+  const jammed = jamUntilRef.current > performance.now();
+  const safe = props.squad?.safeHold;
   const cams: CameraMode[] = ['chase', 'hood', 'top'];
   const qualities: Quality[] = ['low', 'medium', 'high', 'ultra'];
   const debug = typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug');
@@ -317,7 +326,20 @@ export default function RacerView(props: RacerViewProps) {
       <MiniMap canvasRef={mapRef} />
       {ann && <Announce id={`${ann.atMs}`} text={ann.text} expired={elapsed - ann.atMs > 12_000 || elapsed < ann.atMs - 1000} />}
       <Toasts>
-        {hud && hud.cpTotal > 0 && (
+        {jammed && (
+          <Toast tone="warn" testid="nav-jammed">
+            NAVIGATION JAMMED by a rival Deceiver — guidance returns in {Math.ceil((jamUntilRef.current - performance.now()) / 1000)} s
+          </Toast>
+        )}
+        {safe?.available && (
+          <Toast tone="info" testid="safe-hold-offer">
+            Major puzzle open —{' '}
+            <button className="btn" onClick={() => props.token && void api.squad.safeHold(props.token, true).catch(() => undefined)} data-testid="safe-hold-on">
+              Safe-hold the car (≤ 90 s)
+            </button>
+          </Toast>
+        )}
+        {hud && hud.cpTotal > 0 && !jammed && (
           <Toast tone="warn" testid="checkpoint-guide">
             {hud.cpIndex < hud.cpTotal ? (
               <>
@@ -341,7 +363,15 @@ export default function RacerView(props: RacerViewProps) {
       </Toasts>
       {hud && !hud.released && clock?.status === 'LIVE' && <div className="rh-center-banner">Cars release at 03:00 — City Sprint. Engines warm.</div>}
       {clock?.status === 'PAUSED' && <div className="rh-center-banner">Paused by host</div>}
-      {hud?.held && !props.squad?.pit && <div className="rh-center-banner">Roadside recovery — tank empty. +15% fuel in a few seconds (50 credits).</div>}
+      {safe?.active && (
+        <div className="rh-center-banner" data-testid="safe-hold-banner">
+          Safe-hold — car parked while your squad solves the puzzle ({Math.ceil(safe.remainingMs / 1000)} s max){' '}
+          <button className="btn" onClick={() => props.token && void api.squad.safeHold(props.token, false).catch(() => undefined)} data-testid="safe-hold-off">
+            Release
+          </button>
+        </div>
+      )}
+      {hud?.held && !props.squad?.pit && !safe?.active && <div className="rh-center-banner">Roadside recovery — tank empty. +15% fuel in a few seconds (50 credits).</div>}
       {hud?.ghost && <div className="rh-center-banner">Ghosted for repeated ramming — non-collidable for 5 s, clean-driving penalty logged</div>}
       {hud?.canReset && (
         <button className="btn primary rh-reset" onClick={() => props.send({ t: 'reset' })} data-testid="btn-reset">

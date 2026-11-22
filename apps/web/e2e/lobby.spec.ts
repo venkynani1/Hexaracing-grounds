@@ -177,7 +177,7 @@ test('M4: four browser contexts, every role UI active at once during one challen
   await expect(captain.getByTestId('fourkey-result-fourkey-1')).toHaveText(/Correct! \+75/);
   await expect(deceiver.getByTestId('bluff-entry-bluff-1')).toContainText('A tiny cricket');
   // Squad score is shared by all role consoles (derived from server scoring events).
-  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('squad-score')).toHaveText(/^(75|85|100) pts$/);
+  for (const p of [captain, engineer, deceiver]) await expect(p.getByTestId('squad-score')).toHaveText(/^(150|157|168) pts$/);
 
   // Captain sets a waypoint: the Racer's HUD shows the arrow toward it.
   await captain.getByTestId('wp-hexaware').click();

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { Bot } from '@redline/loadtest';
 import { offerLetters, players, scoringEvents, teams } from '@redline/db';
-import { NEUTRAL_INPUT, SQUAD_RUBRIC, gateLayout, tieBreakHash, type Role, type ScoringCategory, type ServerMessage } from '@redline/shared';
+import { NEUTRAL_INPUT, SQUAD_RUBRIC, deriveTotals, gateLayout, tieBreakHash, type Role, type ScoringCategory, type ServerMessage } from '@redline/shared';
 import { computeStandings } from '../src/gate/championship';
 import { OFFER_LETTER_DISCLAIMER } from '../src/gate/letters';
 import { HOST_KEY, connectWs, fullSquad, get, makeServer, post, until, type TestServer } from './helpers';
@@ -219,20 +219,21 @@ describe('M7: championship + offer letters', () => {
       const add = (teamId: string, category: ScoringCategory, points: number, sourceId: string, at?: Date) =>
         s.db.db.insert(scoringEvents).values({ teamId, category, points, reason: 'test', sourceType: sourceId.startsWith('gate') ? 'gate_code' : 'test', sourceId, tick: 0, ...(at ? { createdAt: at } : {}) });
       const [t1, t2, t3, t4, t5, t6, t7, t8] = await Promise.all(['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'].map(mk)) as string[];
-      // Highest total wins; capped categories (CODING 260 → 200).
+      // Highest WEIGHTED total wins; capped categories (CODING 260 → 200). Weighted: 142.9 + 150 + 300 = 593.
       await add(t1!, 'CODING', 260, 'a');
-      await add(t1!, 'DRIVING', 100, 'b');
-      // t2/t3 tie on 200: TEAM_ASSESSMENTS decides.
-      await add(t2!, 'TEAM_ASSESSMENTS', 120, 'a');
-      await add(t2!, 'DRIVING', 80, 'b');
-      await add(t3!, 'TEAM_ASSESSMENTS', 100, 'a');
-      await add(t3!, 'DRIVING', 100, 'b');
-      // t4/t5 tie on 150, equal TA: CODING decides.
-      await add(t4!, 'CODING', 90, 'a');
-      await add(t4!, 'DRIVING', 60, 'b');
-      await add(t5!, 'CODING', 80, 'a');
-      await add(t5!, 'DRIVING', 70, 'b');
-      // t6/t7 tie on 100 with equal TA/coding/driving: earliest final gate submission decides.
+      await add(t1!, 'DRIVING', 250, 'b');
+      await add(t1!, 'TEAM_ASSESSMENTS', 150, 'c');
+      // t2/t3 tie on 200 weighted (missions 100 + puzzles 100): TEAM_ASSESSMENTS decides (50 vs 0).
+      await add(t2!, 'TEAM_ASSESSMENTS', 50, 'a');
+      await add(t2!, 'CODING', 140, 'b');
+      await add(t3!, 'FUEL_MANAGEMENT', 50, 'a');
+      await add(t3!, 'CODING', 140, 'b');
+      // t4/t5 tie on 125 weighted, equal TA: CODING decides (70 vs 0).
+      await add(t4!, 'CODING', 70, 'a');
+      await add(t4!, 'DRIVING', 125, 'b');
+      await add(t5!, 'CAPTAIN_STRATEGY', 50, 'a');
+      await add(t5!, 'DRIVING', 125, 'b');
+      // t6/t7 tie on 70 weighted with equal TA/coding/driving: earliest final gate submission decides.
       await add(t6!, 'DRIVING', 75, 'b');
       await add(t6!, 'HEXAWARE_GATE', 25, 'gate', new Date('2026-11-20T10:50:30Z'));
       await add(t7!, 'DRIVING', 75, 'b');
@@ -241,17 +242,19 @@ describe('M7: championship + offer letters', () => {
       const st = await computeStandings(s.db.db, s.eventId, s.config.eventSeed);
       const order = st.map((x) => x.teamId);
       expect(st[0]!.teamId).toBe(t1);
-      expect(st[0]!.total).toBe(300);
+      expect(st[0]!.total).toBe(593);
+      expect(st.find((x) => x.teamId === t2)!.total).toBe(st.find((x) => x.teamId === t3)!.total);
+      expect(st.find((x) => x.teamId === t4)!.total).toBe(st.find((x) => x.teamId === t5)!.total);
       expect(order.indexOf(t2!)).toBeLessThan(order.indexOf(t3!));
       expect(order.indexOf(t4!)).toBeLessThan(order.indexOf(t5!));
       expect(order.indexOf(t7!)).toBeLessThan(order.indexOf(t6!));
       expect(st.at(-1)!.teamId).toBe(t8);
       expect(st.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-      // Totals equal the capped sum of the rows — derived, not stored.
+      // Totals are the weighted, capped derivation of the rows — derived, not stored.
       for (const x of st) {
         const rows = await s.db.db.select().from(scoringEvents).where(eq(scoringEvents.teamId, x.teamId));
-        const raw = rows.reduce((a, r) => a + r.points, 0);
-        expect(x.total).toBe(x.teamId === t1 ? raw - 60 : raw);
+        expect(x.total).toBe(deriveTotals(rows.map((r) => ({ category: r.category as ScoringCategory, points: r.points }))).total);
+        if (x.teamId === t1) expect(x.byCategory.CODING).toBe(200); // capped from 260
       }
       // Perfect tie on everything → predeclared hash order.
       const [u1, u2] = [await mk('U1'), await mk('U2')];

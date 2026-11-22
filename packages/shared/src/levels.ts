@@ -80,3 +80,25 @@ export interface RivalView {
   } | null;
   trade: { offers: TradeOfferView[]; completed: boolean; depotUsed: boolean; canAct: boolean };
 }
+
+/* ---------------------------------------------------------------- Levels 3–4: Deceiver intel ops + alliances */
+
+export const INTEL = {
+  opensAt: 24 * MIN,
+  closesAt: 42 * MIN,
+  jam: { durationMs: 20_000, cooldownMs: 3 * MIN, maxPerSquad: 3, targetProtectionMs: 4 * MIN, rankWindow: 3, points: 5 },
+  shield: { durationMs: 2 * MIN, cooldownMs: 6 * MIN, blockPoints: 5 },
+} as const;
+
+export interface IntelView {
+  open: boolean;
+  /** navigation display scrambled until (ms from now); informational only — the car keeps driving */
+  jammedForMs: number;
+  shieldForMs: number;
+  /** Deceiver tools (null for other roles) */
+  deceiver: { targets: { teamId: string; name: string }[]; jamsLeft: number; jamReadyInMs: number; shieldReadyInMs: number } | null;
+  ally: { teamId: string; name: string } | null;
+  /** Captain: incoming alliance proposals + squads that can be invited */
+  alliance: { incoming: { teamId: string; name: string }[]; candidates: { teamId: string; name: string }[] } | null;
+  log: string[];
+}

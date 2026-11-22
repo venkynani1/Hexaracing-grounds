@@ -39,6 +39,7 @@ import type { Director } from '../director/Director';
 import type { PitService } from '../pit/PitService';
 import type { GateService } from '../gate/GateService';
 import type { RivalService } from '../rival/RivalService';
+import type { IntelService } from '../rival/IntelService';
 
 export interface WorldRoomOptions {
   eventId: string;
@@ -140,6 +141,11 @@ export class WorldRoom {
 
   attachPit(p: PitService) {
     this.pit = p;
+  }
+
+  intel: IntelService | null = null;
+  attachIntel(i: IntelService) {
+    this.intel = i;
   }
 
   rival: RivalService | null = null;
@@ -259,6 +265,7 @@ export class WorldRoom {
       director: this.director?.snapshot() ?? null,
       gate: this.gate?.snapshot() ?? null,
       rival: this.rival?.snapshot() ?? null,
+      intel: this.intel?.snapshot() ?? null,
     };
   }
 
@@ -295,6 +302,7 @@ export class WorldRoom {
     }
     if (snap.director && this.director) this.director.restore(snap.director);
     if (snap.rival && this.rival) this.rival.restore(snap.rival);
+    if (snap.intel && this.intel) this.intel.restore(snap.intel);
     this.lastElapsed = snap.lastElapsed;
     this.directorTick = snap.directorTick;
     const now = this.clock.snapshot(t);
@@ -572,9 +580,13 @@ export class WorldRoom {
       this.lastElapsed = Math.max(this.lastElapsed, elapsed);
       if (elapsed >= 0) this.director?.update(elapsed);
     }
-    if (this.squad) await this.squad.onTick();
+    if (this.squad) {
+      await this.squad.onTick();
+      this.squad.releaseFinishedSafeHolds();
+    }
     if (this.gate && this.clock.started) await this.gate.onTick();
     if (this.rival && this.clock.started && !this.clock.paused) await this.rival.onTick();
+    if (this.intel && this.clock.started && !this.clock.paused) await this.intel.onTick();
     if (this.clock.started && !this.clock.paused && this.now() - this.lastSnapshotAt >= WorldRoom.SNAPSHOT_INTERVAL_MS) await this.snapshotNow('interval');
     if (changed) {
       if (this.clock.started) void this.snapshotNow('transition').catch((e) => console.error('[snapshot]', e));

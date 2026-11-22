@@ -87,7 +87,7 @@ export interface SimCar {
   /** Active buffs: kind → simMs expiry. Effects are applied in the shared model (client predicts them too). */
   buffs: Map<BuffKind, number>;
   /** Held by the server (pit bay / queue, roadside recovery): no driving; inputs are still acknowledged. */
-  held: { x: number; z: number; heading: number; reason: 'pit' | 'recovery'; until?: number } | null;
+  held: { x: number; z: number; heading: number; reason: 'pit' | 'recovery' | 'safe'; until?: number } | null;
   /** Server-driven movement along a real-road path (disclosed escort, Welcome Convoy). */
   auto: { kind: 'escort' | 'convoy'; path: { x: number; z: number; d: number }[]; s: number; speed: number; startAtSimMs: number } | null;
   /** How the car reached the gate (null = not yet). */
@@ -404,7 +404,7 @@ export class WorldSim {
     };
   }
 
-  hold(teamId: string, at: { x: number; z: number; heading: number }, reason: 'pit' | 'recovery', until?: number) {
+  hold(teamId: string, at: { x: number; z: number; heading: number }, reason: 'pit' | 'recovery' | 'safe', until?: number) {
     const car = this.cars.get(teamId);
     if (!car) return;
     car.held = { ...at, reason, until };
@@ -521,6 +521,10 @@ export class WorldSim {
         car.ticksSinceInput = 0;
         car.state = { ...car.state, x: car.held.x, z: car.held.z, heading: car.held.heading, vx: 0, vz: 0 };
         car.braking = false;
+        if (car.held.reason === 'safe' && car.held.until !== undefined && this.simMs >= car.held.until) {
+          car.held = null; // Driver safe-hold expires on its own (bounded)
+          continue;
+        }
         if (car.held.reason === 'recovery' && car.held.until !== undefined && this.simMs >= car.held.until) {
           car.state = { ...car.state, fuel: car.state.fuel + BALANCE.recovery.fuelPct };
           car.held = null;

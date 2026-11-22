@@ -62,6 +62,11 @@ export const api = {
     pitDiagnose: (token: string, answer: string) => req<{ submitted: true }>('POST', '/api/squad/pit/diagnose', { answer }, bearer(token)),
     pitVerify: (token: string, index: number) => req<{ submitted: true }>('POST', '/api/squad/pit/verify', { index }, bearer(token)),
     pitConfirm: (token: string) => req<{ serviceEndsInMs: number }>('POST', '/api/squad/pit/confirm', {}, bearer(token)),
+    safeHold: (token: string, on: boolean) => req<{ held: boolean }>('POST', '/api/squad/safe-hold', { on }, bearer(token)),
+    intelJam: (token: string, target: string) => req<{ landed: boolean; blocked: boolean }>('POST', '/api/squad/intel/jam', { target }, bearer(token)),
+    intelShield: (token: string) => req<{ shieldForMs: number }>('POST', '/api/squad/intel/shield', {}, bearer(token)),
+    allyPropose: (token: string, target: string) => req<{ proposed: boolean }>('POST', '/api/squad/intel/ally/propose', { target }, bearer(token)),
+    allyAccept: (token: string, from: string) => req<{ ally: string }>('POST', '/api/squad/intel/ally/accept', { from }, bearer(token)),
     rivalDuel: (token: string, answer: string) => req<{ correct: boolean; result: string; points: number }>('POST', '/api/squad/rival/duel', { answer, key: idem() }, bearer(token)),
     rivalOffer: (token: string, give: { kind: string; amount: number }, want: { kind: string; amount: number }) =>
       req<{ offerId: string }>('POST', '/api/squad/rival/offer', { give, want, key: idem() }, bearer(token)),

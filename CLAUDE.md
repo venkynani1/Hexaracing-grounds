@@ -158,4 +158,6 @@ M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUA
 ## Code map (Master spec — levels + rivals)
 - `packages/shared/src/levels.ts` — `LEVELS` (5 levels mapped onto the persisted phase IDs), `stageAt(elapsed)`, `RIVAL` rules, `RivalView`.
 - `apps/server/src/rival/RivalService.ts` + `content.ts` (server-only duel bank) — matchmaking at 33:00, duels, atomic trades, depot; wired in `app.ts` (`/api/squad/rival/*`) and `WorldRoom` (tick, snapshot/restore). Tests: `apps/server/test/rival.test.ts`.
-- Web: `RivalCard` in `pages/RoleConsole.tsx`; level labels via `stageAt` in RacerView, ClockPanel, Projector.
+- `apps/server/src/rival/IntelService.ts` — Deceiver jam/shield + alliances (24:00–42:00), `/api/squad/intel/*`; Racer safe-hold in `SquadService.safeHold` (`/api/squad/safe-hold`). Tests: `apps/server/test/intel.test.ts`.
+- Scoring: championship total = weighted groups (`SCORING_WEIGHTS`, 40/25/15/10/10) over capped raw categories; see docs/SCORING.md.
+- Web: `RivalCard` + `IntelCard` in `pages/RoleConsole.tsx`; jam scramble + safe-hold controls in RacerView; level labels via `stageAt` in RacerView, ClockPanel, Projector.

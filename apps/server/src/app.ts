@@ -23,6 +23,7 @@ import { PitService } from './pit/PitService';
 import { Director } from './director/Director';
 import { GateService } from './gate/GateService';
 import { RivalService } from './rival/RivalService';
+import { IntelService } from './rival/IntelService';
 import { computeStandings } from './gate/championship';
 import { buildOfferLetterPdf } from './gate/letters';
 import { offerLetters, players as playersT, teams as teamsT } from '@redline/db';
@@ -127,6 +128,9 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const rival = new RivalService(db.db, event.id, String(event.seed), sim, squad, () => clock.elapsedMs(now()));
   squad.rivalView = (teamId, role) => rival.viewFor(teamId, role);
   room.attachRival(rival);
+  const intel = new IntelService(db.db, event.id, String(event.seed), squad, () => clock.elapsedMs(now()));
+  squad.intelView = (teamId, role) => intel.viewFor(teamId, role);
+  room.attachIntel(intel);
   if (clock.started) {
     // Crash recovery: restore the newest snapshot (PAUSED for the host), else fall back to a fresh spawn.
     const [latest] = await db.db
@@ -263,6 +267,11 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   app.post('/api/squad/pit/diagnose', async (req) => pit.diagnose(await actor(req), body(req).answer));
   app.post('/api/squad/pit/verify', async (req) => pit.verify(await actor(req), body(req).index));
   app.post('/api/squad/pit/confirm', async (req) => pit.confirm(await actor(req)));
+  app.post('/api/squad/safe-hold', async (req) => squad.safeHold(await actor(req), body(req).on));
+  app.post('/api/squad/intel/jam', async (req) => intel.jam(await actor(req), body(req).target));
+  app.post('/api/squad/intel/shield', async (req) => intel.shield(await actor(req)));
+  app.post('/api/squad/intel/ally/propose', async (req) => intel.propose(await actor(req), body(req).target));
+  app.post('/api/squad/intel/ally/accept', async (req) => intel.accept(await actor(req), body(req).from));
   app.post('/api/squad/rival/duel', async (req) => rival.duelAnswer(await actor(req), body(req).answer, body(req).key));
   app.post('/api/squad/rival/offer', async (req) => rival.offer(await actor(req), body(req).give, body(req).want, body(req).key));
   app.post('/api/squad/rival/respond', async (req) => rival.respond(await actor(req), body(req).offerId, body(req).accept));
