@@ -13,6 +13,9 @@ Update this at the end of every session: what runs, what's tested, what's next, 
   fixed in c0c2e69). Run 35 green.
 - New: `docs/EVENT_DAY.md` (host checklist), `docs/READINESS.md` (evidence-based status, blockers, risks).
 - Tests: 123/123 unit, 9/9 e2e, typecheck clean.
+- Deployed with owner approval: Vercel production = cc1b7c9; codespace server updated, new event "Hexa Racing Grounds"
+  (REGISTRATION_OPEN, private seed); health/DB/CORS/WebSocket verified. Participants use their own mobile data
+  (game load ≈ 8 MB measured on production).
 
 ## 2026-11-22 — Licensed roadside vegetation on the full streamed route
 
