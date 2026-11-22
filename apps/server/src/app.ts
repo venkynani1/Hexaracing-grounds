@@ -11,7 +11,7 @@ import { desc as descOp } from 'drizzle-orm';
 import { testMap, type StartLocationInfo, type WorldMap } from '@redline/shared';
 import { chennaiMap } from '@redline/shared/map/chennai';
 import type { ClientMessage, ServerMessage } from '@redline/shared';
-import type { ServerConfig } from './config';
+import { PUBLIC_DEFAULT_SEED, type ServerConfig } from './config';
 import { TokenSigner, safeEqual } from './auth/tokens';
 import { ApiError, unauthorized } from './http/errors';
 import { RateLimiter } from './http/rateLimit';
@@ -94,6 +94,8 @@ export async function buildServer(opts: BuildOptions): Promise<BuiltServer> {
   const { clock, autoPaused } = clockFromEventRow(event, now(), config.countdownMs);
   const map: WorldMap = config.map === 'test' ? testMap() : chennaiMap();
   await syncMapToDb(db, event.id, map);
+  if (process.env.NODE_ENV === 'production' && String(event.seed) === PUBLIC_DEFAULT_SEED)
+    console.warn(`[security] event "${event.name}" was created with the PUBLIC default seed — answers are predictable. Use a new EVENT_NAME with a private EVENT_SEED for the real event.`);
   // SECURITY: the event seed drives secret content (answer variants, Director, bluff order) and never leaves the
   // server. Clients get a one-way derived WORLD seed for visuals, signals and traffic only.
   const worldSeed = `w${hash32(`${String(event.seed)}:world:${config.sessionSecret}`).toString(16)}`;

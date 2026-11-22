@@ -3,6 +3,8 @@
 > One world = one server process. Never run two instances of the game server for the same event, never put it
 > behind a serverless function, never auto-scale it horizontally.
 
+Event-day host checklist: `docs/EVENT_DAY.md`. Readiness status: `docs/READINESS.md`.
+
 ## 1. Architecture on event day
 | Piece | Where | Notes |
 |---|---|---|
@@ -98,6 +100,7 @@ Then point the web app at it (Vercel project `code-redline`, Production env) and
 ## GitHub Codespaces host (zero-cost; replaces Fly.io) — prepared, not yet load-tested
 `.devcontainer/` installs the server and starts ONE process on port 2567 (`start-server.sh`, log `/tmp/redline-server.log`).
 1. GitHub → Settings → Codespaces → Secrets: `DATABASE_URL` (Neon pooled), `SESSION_SECRET` (≥ 32 chars),
+   (`EVENT_SEED` optional — `start-server.sh` generates a private one; production refuses the public default),
    `HOST_ADMIN_KEY` (≥ 12 chars); repository access: `venkynani1/Hexaracing-grounds`. Idle timeout: 240 min.
 2. Create: https://codespaces.new/venkynani1/Hexaracing-grounds/tree/ccr-7f7a66bb-6yv4fm (region Southeast Asia, 2-core).
 3. Ports tab → 2567 → Port visibility → Public. URL: `https://<codespace>-2567.app.github.dev`.

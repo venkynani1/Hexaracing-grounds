@@ -7,6 +7,12 @@ for v in DATABASE_URL SESSION_SECRET HOST_ADMIN_KEY; do
 done
 pkill -f "apps/server/src/index.ts" 2>/dev/null || true
 export NODE_ENV=production PORT=2567 TRUST_PROXY=true PUBLIC_WEB_ORIGIN="https://code-redline.vercel.app" MAP=chennai
+# Venue Wi-Fi puts every phone behind ONE public IP: 60 joins/min per IP would refuse squads. Override if needed.
+export JOIN_RATE_LIMIT="${JOIN_RATE_LIMIT:-600}"
+# Secret answers derive from the seed. It is stored with the event when the event is FIRST created, so a random one
+# here only matters for a new EVENT_NAME (existing events keep their stored seed across restarts).
+export EVENT_SEED="${EVENT_SEED:-$(od -An -N7 -tu8 /dev/urandom | tr -dc 0-9)}"
+[ -n "${EVENT_NAME:-}" ] && echo "[redline] event name: $EVENT_NAME"
 nohup node_modules/.bin/tsx apps/server/src/index.ts > /tmp/redline-server.log 2>&1 &
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:2567/api/health >/dev/null 2>&1 && break; sleep 1; done
 grep "\[server\]" /tmp/redline-server.log | head -3

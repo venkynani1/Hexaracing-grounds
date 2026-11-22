@@ -2,6 +2,18 @@
 
 Update this at the end of every session: what runs, what's tested, what's next, open risks.
 
+## 2026-11-22 — Event readiness: seed guard, venue join limit, checklist, report
+
+- SECURITY: production now refuses to start without a private `EVENT_SEED` (≥ 8 digits, not the public default);
+  `start-server.sh` generates one. The seed is stored with the event at creation, so the real event needs a NEW
+  `EVENT_NAME` (the current live event uses the public default seed — testing only; the server logs a warning).
+- Venue NAT: `JOIN_RATE_LIMIT` defaults to 600/min in `start-server.sh` (the 60/min default would have refused
+  squads with every phone behind one venue IP).
+- CI: runs 32–34 failed (32: M4 clue visibility 5 s timeout on a slow runner — now 20 s; 33–34: gate row count,
+  fixed in c0c2e69). Run 35 green.
+- New: `docs/EVENT_DAY.md` (host checklist), `docs/READINESS.md` (evidence-based status, blockers, risks).
+- Tests: 123/123 unit, 9/9 e2e, typecheck clean.
+
 ## 2026-11-22 — Licensed roadside vegetation on the full streamed route
 
 - The slice's vegetation system (CC0 palms/ficus/copal/cecropia/shrubs, LOD0/LOD1 + impostors, baked unlit foliage)

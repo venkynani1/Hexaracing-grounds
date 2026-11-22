@@ -72,7 +72,7 @@ npm run assets:build # optimise → apps/web/public/assets + regenerate docs/ASS
 See `.env.example`. Server: `DATABASE_URL`, `SESSION_SECRET`, `HOST_ADMIN_KEY`, `PORT`, `PUBLIC_WEB_ORIGIN`, `EVENT_SEED`. Web: `VITE_SERVER_URL`, `VITE_WS_URL`.
 
 ## Current status
-M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUALS.md); realistic-engine vertical slice `/slice` built and measured (docs/PERF_AUDIT.md) — the on-device 30 FPS gate (docs/ACCEPTANCE.md) is NOT yet run (no device in the build env). Do not expand the full Chennai environment until that gate passes. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md and docs/RUNBOOK.md.
+M1–M8 automated acceptance tests pass locally. Visual rebuild done (docs/VISUALS.md); realistic-engine vertical slice `/slice` built and measured (docs/PERF_AUDIT.md) — the on-device 30 FPS gate (docs/ACCEPTANCE.md) is NOT yet run (no device in the build env). Do not expand the full Chennai environment until that gate passes. Open, manual and owner-dependent: phone FPS check (M2), full 60-minute rehearsal on real phones/venue Wi-Fi (M8), first deploy, CI run, approved branding. See docs/PROGRESS.md, docs/RUNBOOK.md, docs/READINESS.md and docs/EVENT_DAY.md. Production requires a private `EVENT_SEED`; the real event uses a NEW `EVENT_NAME`.
 
 ## Code map (M1)
 - `packages/shared/src` — enums, timeline (`phaseAt`, `beatsBetween`), `balance.ts`, scoring caps + tie-break, join codes, seeded RNG, protocol types.

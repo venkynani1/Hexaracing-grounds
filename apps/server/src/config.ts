@@ -23,6 +23,9 @@ export interface ServerConfig {
   map: 'chennai' | 'test';
 }
 
+/** Dev/test default — public in the repository, so never valid for a production event. */
+export const PUBLIC_DEFAULT_SEED = '20261119';
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const production = env.NODE_ENV === 'production';
   const sessionSecret = env.SESSION_SECRET ?? (production ? '' : 'dev-only-session-secret-change-me');
@@ -32,6 +35,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     if (hostAdminKey.length < 12) throw new Error('HOST_ADMIN_KEY must be set (>= 12 chars) in production');
     // Embedded PGlite in production only with an explicit, logged opt-in (phone/test deployments). Data lives in
     // PGLITE_DIR (put it on a persistent volume) and is lost if that disk is. Never for the real event.
+    // The event seed drives every secret answer; the default is public in the source code.
+    if (!env.EVENT_SEED || env.EVENT_SEED === PUBLIC_DEFAULT_SEED || env.EVENT_SEED.replace(/\D/g, '').length < 8)
+      throw new Error('EVENT_SEED must be set in production (>= 8 digits, not the public default)');
     if (!env.DATABASE_URL && env.ALLOW_EMBEDDED_DB !== 'true') throw new Error('DATABASE_URL must be set in production (or ALLOW_EMBEDDED_DB=true for a test deployment)');
   }
   return {
@@ -42,7 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     sessionSecret,
     hostAdminKey,
     publicWebOrigins: (env.PUBLIC_WEB_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim()).filter(Boolean),
-    eventSeed: env.EVENT_SEED ?? '20261119',
+    eventSeed: env.EVENT_SEED ?? PUBLIC_DEFAULT_SEED,
     eventName: env.EVENT_NAME ?? 'CODE REDLINE: ROAD TO HEXAWARE',
     joinAttemptsPerMinute: Number(env.JOIN_RATE_LIMIT ?? BALANCE.joinAttemptsPerMinute),
     trustProxy: env.TRUST_PROXY === 'true',
