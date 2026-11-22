@@ -21,7 +21,9 @@ Projector = `/projector`, host dashboard = `/host` (both need the host key). Det
 ## 60 minutes before
 - [ ] Codespace open in a browser tab on the host laptop (keeps it awake). Laptop on power, sleep disabled.
 - [ ] `/host` shows: DB OK, tick ≈ 20 Hz, clients count rising as people join.
-- [ ] Participants use their OWN mobile data: ask them to arrive with data on and ≥ 100 MB left (see data use below).
+- [ ] Participants use their OWN mobile data: ask them to arrive with data on and ≥ 100 MB left. Measured: game load
+      ≈ 8 MB (racer, medium); live play ≈ 4.6 KB/s average per player (120-client test) ≈ 16 MB per hour → ≈ 25–30 MB
+      per racer for the event. 4G/5G signal in the room matters more than speed — check one phone per carrier.
 - [ ] Projector on `/projector` (lobby screen lists squads as they register).
 
 ## Registration (≈ 20 min)
