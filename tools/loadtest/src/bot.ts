@@ -25,7 +25,7 @@ export interface Squad {
   name: string;
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+export async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json();
   if (!res.ok) throw new Error(`${url} → ${res.status} ${JSON.stringify(data)}`);
