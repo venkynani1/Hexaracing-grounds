@@ -12,7 +12,12 @@ Update this at the end of every session: what runs, what's tested, what's next, 
   interruptions separately (`interruptions`, `interruptedMs`, excluded from FPS stats). Gate: "Stalls (page visible)"
   must be 0 AND new row "Uninterrupted run" must be clean — an interrupted run can never PASS; it asks for a re-run.
   Verified in Chromium: a hidden 1.5 s pause → interruption; a visible 0.7 s block → stall.
-- Still needed: re-run on the phone (screen on, no app switching) for a clean verdict; also scene C (full) and rain.
+- Run 2, same phone, new probe — scene C (full: traffic, scenery, vegetation, fx), HIGH quality, 3 min autopilot:
+  median 60.2 FPS, 1% low 29.0, p95 21.2 ms, p99 34.5 ms, max frame (visible) 140 ms, **0 stalls with the page
+  visible**, thermal 100 %, res drift ×1.00, 153 draw calls, 167 k tris, 32 MB textures, heap 133 MB, ready 8.8 s.
+  Gate FAIL only on "Uninterrupted run": 1 OS pause of 10.6 s at 13 s (page hidden, no long task) — confirms run 1's
+  6 s "stall" was the same kind of event. Verdict: performance criteria met on this device; one clean uninterrupted
+  run is still required for a formal PASS. Rain and a lower-end phone not yet measured.
 
 ## 2026-11-22 — Master spec, stage 3: projector sequence + 120-player rerun with Levels 3–4
 
